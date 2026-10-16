@@ -9,8 +9,8 @@ Expanded: 36 cards; blue 11, red 10, neutral 11, yellow 2, assassin 2. Blue star
 ## Clues and guesses
 
 The UI requests one Arabic word. Validation permits up to two space-separated Arabic words for compounds. Hyphens/underscores, punctuation and more than two words are rejected. Exact normalized matches to unrevealed board words are rejected; semantic roots/part-word disputes are left to the group, with no AI or repeated-one-clue detection.
-A numerical clue may range up to the number of unrevealed board cards. Maximum confirmed guesses are n+1, including neutral/opponent guesses; Scan and Swap consume none. Zero therefore permits one guess. Unlimited has no numeric cap. After at least one confirmed guess, agents can stop voluntarily. Own color/yellow continues subject to limit/time; opponent/neutral ends the turn, except eligible Second Chance after neutral. Assassin always ends the match.
-Nomination toggles a per-player mark without spending attempts or revealing. Only same-team agents see each other's marks. Confirming is a separate explicit action available to any active-team agent; nominations are advisory and do not require votes. Clear marks on turn change, swap, rematch, and match end.
+A numerical clue may range up to the team’s fixed original target: Standard starter 9 / opponent 8; Expanded blue 11 / red 10. Reveals and yellow credits never lower that maximum. Maximum confirmed guesses are n+1, including neutral/opponent guesses; Scan and Swap consume none. Zero therefore permits one guess. Unlimited has no numeric cap. After at least one confirmed guess, agents can stop voluntarily. Own color/yellow continues subject to limit/time; opponent/neutral ends the turn, except eligible Second Chance after neutral. Assassin always ends the match.
+Suspecting toggles a per-player mark without spending attempts or revealing. Only same-team agents see each other's marks. Revealing is a separate immediate click-icon action available to any active-team agent on a word suspected by a teammate; no confirmation popup is shown; suspects are advisory and do not require votes. Clear marks on turn change, swap, rematch, and match end.
 
 ## Time
 
@@ -23,7 +23,7 @@ Deck: 2 Second Chance, 2 Scan, 2 Swap, 4 Hard Luck. Each team receives one initi
 No action in a team's first turn. At most one action use per own turn. Earned cards can be used from the next own turn; initial cards from own turn 2. Cards remain in hand until used, with no arbitrary hand limit.
 A successful turn reveals own/yellow cards at least equal to the positive clue count and ends cleanly. Two consecutive successful own turns grant one draw and reset the streak. Opponent turns do not interrupt the sequence. Neutral, opponent color, insufficient successes or any timeout breaks it. Neutral breaks it even if Second Chance is used. Zero and unlimited immediately reset streak and cannot advance it. Repeated 1 clues are allowed without penalties.
 Automatic drawing is default, and no spymaster Draw control appears. Optional manual drawing is locked in pregame: only spymasters draw; button is disabled/faded until a draw is available. Earned draw opportunities expire at the beginning of that team's next turn, allowing the whole opponent turn (including clue preparation) to draw. Late draw does not delay eligibility. Missing a draw forfeits the opportunity and does not restore streak.
-Manual initial cards: before play begins, both spymasters have a one-time initial draw in the preparation phase. Admin explicitly begins turns; any unclaimed initial draws expire then. Agents alone see hands/private outcomes and activate cards; spymasters have no action-use controls.
+Manual initial cards: before play begins, both spymasters have a one-time initial draw in the preparation phase. Admin cannot start play before both initial draws complete. Automatic draws also wait for explicit admin Start play. Both spy keys remain hidden throughout the pregame draw phase, including after both draws until the admin begins play. Agents alone see hands/private outcomes and activate cards; spymasters have no action-use controls.
 
 ## Actions
 
@@ -33,4 +33,12 @@ Second Chance: after neutral, only if there are guesses remaining and an eligibl
 
 ## Storage and privacy
 
-Only the first local persona's name is remembered in browser storage. No ongoing state/history/results persist across refresh. Finished state remains on screen until rematch/refresh; no archive is created. Rule projection hides unrevealed colors from agents, private hands/scans/action events from spies/opponents, and never projects deck order. Browser-local testing is not secure against developer tools; server secrecy belongs to Phase 3.
+Only the first local persona's name and interface language are remembered in browser storage. No ongoing state/history/results persist across refresh. Finished state remains on screen until rematch/refresh; no archive is created. Rule projection hides unrevealed colors from agents, private hands/scans/action events from spies/opponents, and never projects deck order. Browser-local testing is not secure against developer tools; server secrecy belongs to Phase 3.
+
+## Interface assistance and layout
+
+Arabic and English UI are selectable, including help, errors and event descriptions. Board words/clues stay Arabic; names stay as entered. All displayed numeric UI values use Latin 0–9. Timer entry accepts Latin, Arabic-Indic, and Persian digits. Enabled state is separate from the draft; invalid enabled timer drafts block Start, never untoggle themselves.
+
+Spies can toggle private word-frame highlights in their local perspective after play starts. These are separate UI state keyed by spy ID and word, follow words through swaps, never affect the rules or agent views, and clear on rematch.
+
+Only suspected cards show the top-right immediate reveal icon to active-team agents. Spies have no reveal icons. Team progression and logs live in a button-opened sidebar. The board occupies the full main content width with active-team glow. Spy/action controls appear below it. Victory adds a banner, trophy and confetti; reduced-motion disables motion.

@@ -48,6 +48,7 @@ function grant(s, team, usableTurn, rng) {
     log(s, 'استُحقت محاولة سحب. تنتهي عند بداية دور الفريق القادم.', team);
   } else draw(s, team, usableTurn, rng);
 }
+export function maxClueCount(s, team = s.active) { return s.teams[team].target; }
 function beginTurn(s, team) {
   const t = s.teams[team];
   s.active = team;
@@ -109,14 +110,14 @@ export function createMatch(settings, players, pool, now = Date.now(), rng = Mat
   assert(players.every(p => typeof p.name === 'string' && p.name.trim() && p.name.trim().length <= 24 && TEAMS.includes(p.team) && ['spy','agent'].includes(p.role)), 'أكمل أسماء اللاعبين وفرقهم وأدوارهم.');
   assert(new Set(players.map(p => p.name.trim())).size === players.length, 'استخدم أسماء مختلفة للاعبين.');
   for (const team of TEAMS) {
-    assert(players.filter(p => p.team === team && p.role === 'spy').length === 1, 'كل فريق يحتاج قائد جواسيس واحدًا بالضبط.');
-    assert(players.some(p => p.team === team && p.role === 'agent'), 'كل فريق يحتاج مخمّنًا واحدًا على الأقل.');
+    assert(players.filter(p => p.team === team && p.role === 'spy').length === 1, 'كل فريق يحتاج جاسوس واحدًا بالضبط.');
+    assert(players.some(p => p.team === team && p.role === 'agent'), 'كل فريق يحتاج عميلًا واحدًا على الأقل.');
   }
   const expanded = settings.mode === 'expanded';
   const start = expanded ? 'blue' : rng() < 0.5 ? 'blue' : 'red';
   const colors = expanded ? [...Array(11).fill('blue'), ...Array(10).fill('red'), ...Array(11).fill('neutral'), 'yellow','yellow','black','black'] : [...Array(9).fill(start), ...Array(8).fill(other(start)), ...Array(7).fill('neutral'), 'black'];
   const layout = shuffled(colors, rng), picked = shuffled(words, rng).slice(0, layout.length);
-  const teamState = team => ({target:expanded ? team === 'blue' ? 11 : 10 : team === start ? 9 : 8, turns:0, streak:0, yellow:0, hand:[], pendingDraw:null, scans:[]});
+  const teamState = team => ({target:expanded ? team === 'blue' ? 11 : 10 : team === start ? 9 : 8, turns:0, streak:0, yellow:0, hand:[], pendingDraw:null, initialDrawn:false, scans:[]});
   const s = {settings:{mode:settings.mode,timerSeconds:settings.timerSeconds,manualDraw:expanded && !!settings.manualDraw}, players:players.map(p=>({...p,name:p.name.trim()})), adminId:players[0].id,
     board:layout.map((color,i)=>({id:i,word:picked[i],color,revealed:false,yellowOwner:null})), size:expanded ? 6 : 5,
     teams:{blue:teamState('blue'),red:teamState('red')}, deck:expanded ? shuffled(['second','second','scan','scan','swap','swap','luck','luck','luck','luck'],rng) : [], discard:[],
@@ -125,10 +126,10 @@ export function createMatch(settings, players, pool, now = Date.now(), rng = Mat
   if (expanded) {
     for (const team of TEAMS) {
       if (s.settings.manualDraw) s.teams[team].pendingDraw = {usableTurn:2};
-      else draw(s,team,2,rng);
+      else { draw(s,team,2,rng); s.teams[team].initialDrawn = true; }
     }
   }
-  if (!expanded || !s.settings.manualDraw) beginTurn(s,start);
+  if (!expanded) beginTurn(s,start);
   return s;
 }
 function expire(s, now, rng) {
@@ -159,23 +160,22 @@ export function transition(state, action, now = Date.now(), rng = Math.random) {
   assert(!s.pause, 'المباراة متوقفة مؤقتًا.');
   assert(s.phase !== 'finished', 'انتهت المباراة.');
   if (action.type === 'DRAW') {
-    assert(s.settings.manualDraw && actor.role === 'spy', 'السحب اليدوي لقائد الجواسيس فقط.');
+    assert(s.settings.manualDraw && actor.role === 'spy', 'السحب اليدوي للجاسوس فقط.');
     const t = s.teams[actor.team];
     assert(t.pendingDraw, 'لا توجد محاولة سحب متاحة.');
     assert(s.phase === 'deal' || actor.team !== s.active, 'انتهت نافذة السحب.');
     draw(s,actor.team,t.pendingDraw.usableTurn,rng); t.pendingDraw = null;
+    if (s.phase === 'deal') t.initialDrawn = true;
     return s;
   }
   if (action.type === 'BEGIN') {
     assert(actor.id === s.adminId && s.phase === 'deal', 'بدء الأدوار متاح للمشرف فقط.');
-    for (const team of TEAMS) {
-      if (s.teams[team].pendingDraw) {s.teams[team].pendingDraw = null; log(s, 'لم تُسحب بطاقة البداية.',team);}
-    }
+    assert(TEAMS.every(team => s.teams[team].initialDrawn), 'يجب إكمال سحب البداية للفريقين قبل بدء اللعب.');
     beginTurn(s,s.firstTeam); return s;
   }
   assert(s.phase !== 'deal', 'ابدأ الأدوار أولًا.');
   if (action.type === 'MARK') {
-    assert(actor.role === 'agent', 'الترشيح للمخمّنين فقط.');
+    assert(actor.role === 'agent', 'التحديد للعملاء فقط.');
     assert(s.board.some(c => c.id === action.cell && !c.revealed), 'اختر كلمة غير مكشوفة.');
     const key=String(action.cell), marks=s.marks[key] || [];
     s.marks[key]=marks.includes(actor.id) ? marks.filter(id=>id!==actor.id) : [...marks,actor.id];
@@ -183,12 +183,12 @@ export function transition(state, action, now = Date.now(), rng = Math.random) {
   }
   assert(actor.team === s.active, 'انتظر دور فريقك.');
   if (action.type === 'CLUE') {
-    assert(actor.role === 'spy' && s.phase === 'clue', 'التلميح لقائد الفريق وفي مرحلة التلميح فقط.');
+    assert(actor.role === 'spy' && s.phase === 'clue', 'التلميح لجاسوس الفريق وفي مرحلة التلميح فقط.');
     const text = String(action.text ?? '').trim().replace(/\s+/g,' ');
     assert(text.length > 0 && text.length <= 60 && text.split(' ').length <= 2 && /^[\p{Script=Arabic}\p{M} ]+$/u.test(text) && !/[\p{Dash_Punctuation}_\u0640]/u.test(text), 'أدخل تلميحًا عربيًا: كلمة واحدة، دون شرطات أو شرطة سفلية.');
     const normalized = normalizeWord(text);
     assert(!s.board.some(c=>!c.revealed && normalizeWord(c.word) === normalized), 'التلميح يطابق كلمة غير مكشوفة.');
-    const max = s.board.filter(c=>!c.revealed).length;
+    const max = maxClueCount(s);
     const count=action.count;
     assert(count === 'unlimited' || Number.isInteger(count) && count >= (s.settings.mode === 'expanded' ? 0 : 1) && count <= max, 'عدد التلميح غير صالح.');
     s.clue={text,count}; s.phase='guess'; s.deadline=s.settings.timerSeconds ? now+s.settings.timerSeconds*1000 : null;
@@ -199,7 +199,7 @@ export function transition(state, action, now = Date.now(), rng = Math.random) {
     }
     return s;
   }
-  assert(actor.role === 'agent', 'هذا الإجراء للمخمّنين فقط.');
+  assert(actor.role === 'agent', 'هذا الإجراء للعملاء فقط.');
   if (action.type === 'SCAN') {
     assert(['clue','guess'].includes(s.phase) && s.guesses === 0, 'الفحص قبل أول تخمين فقط.');
     const c=s.board.find(c=>c.id===action.cell && !c.revealed); assert(c,'اختر كلمة غير مكشوفة.');
@@ -260,12 +260,12 @@ export function transition(state, action, now = Date.now(), rng = Math.random) {
 export function playerView(s, playerId) {
   const p=s.players.find(p=>p.id===playerId); assert(p,'لاعب غير معروف.');
   const agent=p.role==='agent', spy=p.role==='spy';
-  const teamInfo=team=>({target:s.teams[team].target,score:score(s,team),yellow:s.teams[team].yellow,streak:s.teams[team].streak,turns:s.teams[team].turns});
+  const teamInfo=team=>({target:s.teams[team].target,score:score(s,team),yellow:s.teams[team].yellow,streak:s.teams[team].streak,turns:s.teams[team].turns,initialDrawn:s.teams[team].initialDrawn});
   return {
     me:{...p},adminId:s.adminId,settings:{...s.settings},players:s.players.map(p=>({...p})),active:s.active,phase:s.phase,size:s.size,turnNumber:s.turnNumber,
     clue:s.clue ? {...s.clue}:null,guesses:s.guesses,good:s.good,actionUsed:s.actionUsed,deadline:s.deadline,pause:!!s.pause,winner:s.winner,
     teams:{blue:teamInfo('blue'),red:teamInfo('red')},
-    board:s.board.map(c=>({id:c.id,word:c.word,revealed:c.revealed,yellowOwner:c.yellowOwner,color:spy || c.revealed || s.phase==='finished' ? c.color:null,
+    board:s.board.map(c=>({id:c.id,word:c.word,revealed:c.revealed,yellowOwner:c.yellowOwner,color:(spy && s.phase!=='deal') || c.revealed || s.phase==='finished' ? c.color:null,
       marks:agent ? (s.marks[String(c.id)]||[]).filter(id=>s.players.some(p2=>p2.id===id && p2.role==='agent' && p2.team===p.team)).map(id=>s.players.find(p2=>p2.id===id).name):[]})),
     hand:agent ? s.teams[p.team].hand.map(c=>({...c,available:c.usableTurn<=s.teams[p.team].turns && s.teams[p.team].turns>1 && !s.actionUsed && s.active===p.team && !s.pause && !['deal','finished'].includes(s.phase)})):[],
     canDraw:spy && s.settings.manualDraw && !!s.teams[p.team].pendingDraw && (s.phase==='deal'||p.team!==s.active) && !s.pause,
