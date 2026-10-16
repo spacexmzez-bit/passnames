@@ -1,0 +1,26 @@
+{
+  "name": "kalimat-sirriya",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "dev:worker": "npm run build && wrangler dev",
+    "deploy": "wrangler deploy",
+    "check:deploy": "npm run build && wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "partyserver": "0.5.10"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0",
+    "wrangler": "^4.0.0",
+    "@cloudflare/workers-types": "^4.20260426.1"
+  }
+}
