@@ -1,6 +1,6 @@
 {
-  "name": "kalimat-sirriya",
-  "version": "0.1.0",
+  "name": "passnames",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "npm run test && vite build",
     "dev:worker": "npm run build && wrangler dev",
     "deploy": "wrangler deploy",
-    "check:deploy": "npm run build && wrangler deploy --dry-run"
+    "check:deploy": "npm run build && wrangler deploy --dry-run",
+    "test": "node --test engine.test.js"
   },
   "dependencies": {
     "react": "^19.1.0",
