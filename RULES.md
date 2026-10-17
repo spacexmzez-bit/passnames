@@ -42,3 +42,13 @@ Arabic and English UI are selectable, including help, errors and event descripti
 Spies can toggle private word-frame highlights in their local perspective after play starts. These are separate UI state keyed by spy ID and word, follow words through swaps, never affect the rules or agent views, and clear on rematch.
 
 Only suspected cards show the top-right immediate reveal icon to active-team agents. Spies have no reveal icons. Team progression and logs live in a button-opened sidebar. The board occupies the full main content width with active-team glow. Spy/action controls appear below it. Victory adds a banner, trophy and confetti; reduced-motion disables motion.
+
+## Phase 3A rooms (gameplay remains a local test until 3B)
+
+Default site entry now creates/joins private rooms. A room is unlisted, has a random 9-character code and invitation link, requires admin approval by default, and holds at most 10 admitted members. Pending requests are bounded separately. Invitation links never bypass approval. Unlocked rooms allow direct joins only with a code/link; there is no public discovery.
+
+The creator is admin and initially Blue spy. Admin may approve, reject, kick, lock/unlock, configure settings, and assign roles. Members may assign only themselves. At most one spy per team. Confirm lineup requires every admitted player to have a team, at least 4 members, and both teams to have a connected spy and at least one connected agent. Additional disconnected agents do not block ready teams. Confirming freezes settings/roles into a Ready checkpoint, not a live match. Returning to lobby permits edits. Required-player disconnection, kicking or admitted departure reopens the checkpoint.
+
+Anonymous private browser tokens restore seats after refresh and basic reconnect; a name or player ID is not proof of identity. Kicking/declining revokes that saved seat for this room. Explicit admin departure transfers rights to an admitted member; a disconnected admin keeps their seat until they reconnect (timed failover in 3C). The final admitted member leaving retires the room. Empty rooms expire after one hour. No game boards, results or match archives are stored by 3A.
+
+The existing Phase 2 local game, including its local perspective selector, remains separately available and retains all rules above. Online gameplay and rematches are 3B; match-aware recovery and timed admin transfer are 3C.

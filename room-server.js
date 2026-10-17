@@ -1,0 +1,116 @@
+import {RoomError,createLobby,joinLobby,lobbyAction,lobbyView,memberForHash,readiness,EMPTY_ROOM_TTL} from './room-core.js';
+export async function sessionHash(token){
+ if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw new RoomError('SESSION_INVALID',401);
+ const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+ return [...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+}
+export function errorResponse(error){return Response.json({ok:false,error:error instanceof RoomError?error.code:'SERVER_ERROR'},{status:error instanceof RoomError?error.status:500,headers:{'Cache-Control':'no-store'}});}
+export async function readJSON(request){
+ if(!request.headers.get('Content-Type')?.includes('application/json'))throw new RoomError('JSON_REQUIRED',415);
+ if(Number(request.headers.get('Content-Length'))>8192)throw new RoomError('TOO_LARGE',413);
+ const reader=request.body?.getReader();let size=0;const chunks=[];
+ if(reader){while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>8192){await reader.cancel();throw new RoomError('TOO_LARGE',413);}chunks.push(value);}}
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+ const text=new TextDecoder().decode(bytes);
+ try{const value=JSON.parse(text);if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value;}catch{throw new RoomError('BAD_JSON');}
+}
+// Base injection keeps transport/storage logic independently testable in Node.
+export function makeRoomServer(Base){return class extends Base{
+ static options={hibernate:true};
+ lobby=null;
+ work=Promise.resolve();
+ exclusive(fn){const operation=this.work.then(fn);this.work=operation.catch(()=>{});return operation;}
+ async onStart(){
+  this.lobby=await this.ctx.storage.get('lobby')||null;
+  if(this.ctx.setWebSocketAutoResponse&&typeof WebSocketRequestResponsePair!=='undefined')this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping','pong'));
+ }
+ sockets(){return [...this.getConnections()];}
+ online(){return [...new Set(this.sockets().map(c=>c.state?.playerId).filter(id=>this.lobby?.players.some(p=>p.id===id)))];}
+ send(connection,value){try{connection.send(JSON.stringify(value));}catch{/* close handling broadcasts current presence */}}
+ async persist(next){
+  if(!next?.adminId){await this.ctx.storage.deleteAlarm();await this.ctx.storage.deleteAll();this.lobby=null;return;}
+  await this.ctx.storage.put('lobby',next);this.lobby=next;
+ }
+ async schedule(){
+  if(!this.lobby)return;
+  if(this.online().length){
+   if(this.lobby.emptySince!==null)await this.persist({...this.lobby,emptySince:null});
+   await this.ctx.storage.deleteAlarm();
+  }else{
+   if(this.lobby.emptySince===null)await this.persist({...this.lobby,emptySince:Date.now()});
+   await this.ctx.storage.setAlarm(this.lobby.emptySince+EMPTY_ROOM_TTL);
+  }
+ }
+ async expireIfNeeded(){
+  if(this.lobby&&this.lobby.emptySince!==null&&Date.now()-this.lobby.emptySince>=EMPTY_ROOM_TTL&&!this.online().length){
+   await this.ctx.storage.deleteAlarm();await this.ctx.storage.deleteAll();this.lobby=null;
+   for(const c of this.sockets()){this.send(c,{type:'removed',reason:'ROOM_NOT_FOUND'});c.close(4404,'ROOM_NOT_FOUND');}
+  }
+ }
+ publish(){
+  const online=this.online();
+  for(const c of this.sockets()){
+   const id=c.state?.playerId;if(!id)continue;
+   if(!this.lobby?.players.some(p=>p.id===id)){const reason=this.lobby?'REMOVED':'ROOM_NOT_FOUND';this.send(c,{type:'removed',reason});c.close(this.lobby?4403:4404,reason);continue;}
+   this.send(c,{type:'snapshot',room:lobbyView(this.lobby,id,online)});
+  }
+ }
+ async onRequest(request){return this.exclusive(async()=>{
+  try{
+   if(request.method==='GET'&&new URL(request.url).pathname==='/health')return Response.json({ok:true,service:'Rooms',phase:'3A'});
+   if(request.method!=='POST')throw new RoomError('NOT_FOUND',404);
+   const path=new URL(request.url).pathname;if(!['/create','/join'].includes(path))throw new RoomError('NOT_FOUND',404);
+   const data=await readJSON(request);await this.expireIfNeeded();
+   const hash=await sessionHash(data.token);let member;
+   if(path==='/create'){
+    if(this.lobby)throw new RoomError('ROOM_EXISTS',409);
+    const next=createLobby(this.name,data.name,hash,data.settings);
+    await this.persist(next);member=next.players[0];
+   }else{
+    const result=joinLobby(this.lobby,data.name,hash);await this.persist(result.state);member=result.member;
+   }
+   await this.schedule();this.publish();
+   return Response.json({ok:true,code:this.lobby.code,playerId:member.id,status:member.status},{status:path==='/create'?201:200,headers:{'Cache-Control':'no-store'}});
+  }catch(error){return errorResponse(error);}
+ });}
+ async onConnect(connection){
+  if(!this.lobby){connection.close(4404,'ROOM_NOT_FOUND');return;}
+  if(this.sockets().length>40){connection.close(4429,'TOO_MANY_CONNECTIONS');return;}
+  this.send(connection,{type:'hello'});
+ }
+ async onMessage(connection,message){return this.exclusive(async()=>{
+  let requestId=null;
+  try{
+   if(message==='ping'){try{connection.send('pong');}catch{}return;}
+   if(typeof message!=='string'||message.length>8192)throw new RoomError('TOO_LARGE',413);
+   let data;try{data=JSON.parse(message);}catch{throw new RoomError('BAD_JSON');}
+   if(!data||typeof data!=='object'||Array.isArray(data))throw new RoomError('BAD_JSON');
+   requestId=typeof data.requestId==='string'?data.requestId.slice(0,80):null;
+   await this.expireIfNeeded();if(!this.lobby)throw new RoomError('ROOM_NOT_FOUND',404);
+   if(data.type==='AUTH'){
+    if(connection.state?.playerId)throw new RoomError('BAD_ACTION');
+    const member=memberForHash(this.lobby,await sessionHash(data.token));
+    if(!member)throw new RoomError('SESSION_INVALID',401);
+    if(this.sockets().filter(c=>c.state?.playerId===member.id).length>=4)throw new RoomError('TOO_MANY_CONNECTIONS',429);
+    connection.setState({playerId:member.id,windowAt:Date.now(),count:0});
+    await this.schedule();this.publish();return;
+   }
+   const identity=connection.state; if(!identity?.playerId)throw new RoomError('SESSION_INVALID',401);
+   const now=Date.now(),windowAt=now-identity.windowAt>10000?now:identity.windowAt;
+   const count=windowAt===identity.windowAt?identity.count+1:1;
+   connection.setState({...identity,windowAt,count});if(count>45)throw new RoomError('RATE_LIMIT',429);
+   const next=lobbyAction(this.lobby,identity.playerId,data,this.online(),now);
+   await this.persist(next);await this.schedule();
+   this.send(connection,{type:'ack',requestId});this.publish();
+  }catch(error){
+   this.send(connection,{type:'error',requestId,error:error instanceof RoomError?error.code:'SERVER_ERROR'});
+   if(['SESSION_INVALID','ROOM_NOT_FOUND'].includes(error.code))connection.close(4401,error.code);
+  }
+ });}
+ async onClose(){return this.exclusive(async()=>{
+  if(this.lobby?.phase==='ready'&&!readiness(this.lobby,this.online()).ready)await this.persist({...this.lobby,phase:'lobby',revision:this.lobby.revision+1,updatedAt:Date.now()});
+  await this.schedule();this.publish();
+ });}
+ async onError(){return this.onClose();}
+ async onAlarm(){return this.exclusive(async()=>{await this.expireIfNeeded();if(this.lobby)await this.schedule();});}
+};}

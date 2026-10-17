@@ -7,7 +7,7 @@ import * as engine from './engine.js';
 import * as i18n from './i18n.js';
 import * as numerals from './ui-utils.js';
 const words=JSON.parse(readFileSync(new URL('./words.json',import.meta.url)));
-const source=readFileSync(new URL('./main.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/createRoot\(document.getElementById\('root'\)\).render\(h\(App\)\);/,'globalThis.TestApp=App;');
+const source=readFileSync(new URL('./main.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/createRoot\(document.getElementById\('root'\)\).render\(h\((?:App|Site)\)\);/,'globalThis.TestApp=App;');
 function harness(){
  let slots=[],cursor=0;
  const createElement=(type,props,...children)=>typeof type==='function'?type({...props,children:children.length===1?children[0]:children}):{type,props:props||{},children:children.flat(Infinity).filter(x=>x!==null&&x!==undefined&&x!==false)};

@@ -5,6 +5,7 @@ import {createMatch, transition, playerView, maxClueCount, checkPool} from './en
 import {translator, message} from './i18n.js';
 import {latinDigits, parseInteger, timerValue} from './ui-utils.js';
 import './style.css';
+import RoomHub from './room-ui.js';
 const h=React.createElement;
 function saved(key,fallback){try{return localStorage.getItem(key)||fallback;}catch{return fallback;}}
 function save(key,value){try{localStorage.setItem(key,value);}catch{}}
@@ -180,4 +181,10 @@ function App(){
   state?game():lobby(),help&&helpDialog(),
   confirm&&h('div',{className:'overlay'},h('section',{className:'modal confirm-modal',role:'dialog','aria-modal':true,'aria-labelledby':'confirm-title'},h('h2',{id:'confirm-title'},t('rematchTitle')),h('p',null,t('rematchText')),h('div',{className:'button-row'},h(Button,{kind:'gold',onClick:rematch},t('backLobby')),h(Button,{autoFocus:true,onClick:()=>setConfirm(false)},t('cancel'))))));
 }
-createRoot(document.getElementById('root')).render(h(App));
+function Site(){
+ const [local,setLocal]=useState(false);
+ if(!local)return h(RoomHub,{onLocal:()=>setLocal(true)});
+ const label=saved('passnames-language','ar')==='en'?'Back to rooms':'العودة للغرف';
+ return h(React.Fragment,null,h('div',{className:'surface-switch'},h(Button,{onClick:()=>setLocal(false)},label)),h(App));
+}
+createRoot(document.getElementById('root')).render(h(Site));

@@ -1,78 +1,73 @@
-# passnames — Phase 2, revision 0.2.1
+# passnames — Phase 3A (v0.3.0)
 
-Arabic-word local game prototype with Arabic/English UI, ready to update the existing Cloudflare Worker named `passnames`.
+Private multiplayer rooms and live lobby setup on the existing `passnames` Cloudflare Worker. The complete Phase 2 local game remains available through **Local game test / اختبار اللعبة محليًا**. All authored files belong directly in the repository root.
 
-## Upload and deployment
+## Deploy this update
 
-1. Extract the ZIP. Upload the files themselves to the existing GitHub repository root, replacing earlier versions. Do not upload the ZIP or an enclosing directory.
-2. Keep all files at root, including engine.js, engine.test.js, ui.test.js, i18n.js, ui-utils.js, words.json, worker.js and wrangler.jsonc.
-3. Cloudflare Workers Builds settings remain: build `npm run build`, deploy `npx wrangler deploy`, Node 22, repository root, production branch main (or the branch already configured).
-4. Build automatically runs the 42 rules and component tests, then Vite. The existing PartyServer binding and v1 migration remain unchanged; no manual binding changes or new database are required.
-5. Open the existing workers.dev address. If the old setup screen appears, refresh the page or close and reopen its tab.
+1. Extract the ZIP, then upload its files to the existing private GitHub repository root, replacing previous files. Do not upload the ZIP or its enclosing folder.
+2. Keep Cloudflare Workers Builds: build `npm run build`, deploy `npx wrangler deploy`, Node 22, existing production branch, repository root.
+3. Include the updated `wrangler.jsonc`. It retains `SetupServer` and the existing v1 migration and adds `RoomsServer` under a new v2 SQLite migration. Wrangler creates the Rooms binding automatically. Do not delete/change v1, recreate the Worker, or add a manual database.
+4. Wait for the Git-triggered build/deployment. The build runs all rule, room server, transport and component tests before Vite.
+5. Open your existing workers.dev address. The new default landing page offers Create room and Join room. `/api/health` now checks both the original setup service and the Rooms binding and returns `rooms: true`.
+6. No new API key, login service, PartyKit hosting account, paid Cloudflare upgrade, or separate deployment workflow is required.
 
-## Phase 2 scope
+## What 3A does
 
-- Standard 5x5 and expanded 6x6, Arabic/English interface with Arabic words, 4–10 local player personas. Latin numerals are displayed in both languages; timer inputs accept Arabic, Persian, or Latin digits.
-- One spymaster and at least one agent per team, with first player as admin.
-- Local player perspective selector; any agent on the active team can confirm a guess.
-- Suspect by tapping a word. Only suspected words display a top-right click icon; tapping it immediately reveals, without a confirmation dialog.
-- Teammate-agent-only suspects, hands, scans and action logs in the rendered views.
-- Clues, n+1 guess cap, unlimited, expanded-only zero; 0/unlimited reset streak with a visible warning.
-- Optional 10–600 second guessing timer, no clue timer, settings locked during play.
-- Action deck, two-successful-turn rewards, automatic/manual drawing, expiry and next-turn eligibility.
-- Second Chance: 10-second decision timer in timed games, then saved remaining guess time; no timer in untimed games.
-- Admin pause for local testing and mid-match rematch confirmation; teams/settings preserved in the lobby.
-- Current-match clue/event history; no match archive or result storage. Refresh ends the local match.
-- Only the first player's entered name and interface language are remembered in localStorage.
+- Create an unlisted private room, with a random 9-character code and copyable invitation link.
+- Enter a name; the browser remembers it for future entry.
+- Rooms require admin approval by default. An invitation never bypasses the lock.
+- Admin can approve/decline applicants, unlock/lock direct code-based entry, kick members, edit settings, and assign teams/roles.
+- Admitted players can choose their own team and role. Each team can have at most one spy; agents can share teams within the overall 10-player capacity.
+- Maximum 10 admitted players and a separate bounded queue of 10 requests. There is no public room directory or list endpoint.
+- Real-time roster/settings/presence updates use WebSockets, with one server-controlled Durable Object per room.
+- Confirm lineup requires at least 4 admitted players, every admitted player assigned, and each team having its spy and at least one agent connected. Extra offline agents do not block an otherwise complete team.
+- Confirm lineup locks the settings/roles into a Ready screen. **It does not launch multiplayer gameplay in 3A.** Admin can reopen Edit lineup.
+- If a required player disconnects from a confirmed lineup, it reopens for editing. Basic reconnect restores an admitted player's identity and seat.
+- If admin explicitly leaves, rights transfer to an admitted player (prefer connected members). A temporarily disconnected admin retains the seat; automatic timed admin failover belongs to 3C.
+- Server state survives object recreation/hibernation. Empty rooms expire after one hour. If the last admitted member explicitly leaves, the room is retired immediately.
+- Arabic and English UI; words remain Arabic in the local game.
 
-## Start a test
+## Test 3A with four players
 
-1. Edit player names and roles in the lobby. The four prefilled names are local test personas, not online players.
-2. Choose a mode, optional timer, and optional manual draw (expanded only).
-3. Start. Expanded mode waits in a pregame draw phase. In manual mode, switch to each spy and take both initial draws; in automatic mode both are already drawn. Only then can the admin press Start play. Both spy keys stay hidden until that action.
-4. Switch to the active team's spymaster and submit a clue.
-5. Switch to an agent. Tap a word to suspect it, then use its top-right click icon to reveal it immediately. There is no reveal confirmation popup.
-6. Switch among players to check different views. Use admin Rematch to return to the lobby.
-7. Expanded: after two qualifying own turns, inspect the action hand. For manual draws, switch to that team's spymaster during the opponent's turn and draw before the next own turn starts.
-8. Read the built-in Arabic Rules dialog for the full game behavior. RULES.md records the implementation contract.
+1. Open the site on device/browser A, enter a name and Create room. Creator starts as Blue spy and admin; roles can be changed before readiness confirmation.
+2. Copy invite. Open it on devices/browser profiles B, C and D. Each enters a distinct name and presses Join room.
+3. Each applicant should see Waiting for admin approval; no roster/settings are shown to them yet.
+4. A approves them from Join requests. They should enter the live lobby automatically, without reloading.
+5. Set A to Blue spy, B to Blue agent, C to Red spy, D to Red agent. Players can select their own seats, or the admin can assign them.
+6. Try taking an already occupied spy seat; the server should refuse. Nonadmins must not see approval/lock/settings controls or be able to change another player's seat.
+7. Change mode/timer/manual-draw settings as admin and save. Check other devices update. Timer entry accepts Arabic or Latin numerals and remains enabled while incomplete/invalid; Save/Confirm refuses an invalid value.
+8. Confirm lineup. Everyone should see the Ready screen explaining live gameplay arrives in 3B. Return to Edit lineup.
+9. Refresh B: it should restore the same approved player, without a duplicate seat or new approval request.
+10. Kick B: the saved seat loses access and its open connections close. A blocked saved seat cannot immediately request reentry; without accounts, this is seat revocation rather than a permanent person/device ban.
+11. To test a fresh player, use a separate device, browser, or browser profile. Tabs in one browser share the room token and therefore the same seat. A browser's private windows can also share one private session with each other.
+12. Unlock the room and test a new code/link join. It enters directly while the room is in lobby. Once the lineup is Ready, new entrants wait for admin approval and the next editable lobby even if the lock is off.
 
-## Phase 3 boundary
+## Existing local game
 
-This is intentionally a browser-local game. Different devices/tabs do not share a match, there are no live rooms, invitation links, admissions, kicks, reconnects, or server-enforced identity yet. The entire local state exists on the test device. Rendered role views hide secrets, but this is not a security boundary: Phase 3 must move the rules and secret board to the authoritative server and issue authenticated role-specific views. The temporary player selector will be removed from production multiplayer play.
+Use Local game test on the landing page to run the complete Phase 2 game on one device. All prior rules, spy highlights, suspected-card click icons, timers, English UI and victory effects are retained. Back to rooms leaves this local test. The local game's board/state are not sent to the room server.
 
-## Word changes
+`words.json` remains the only source of board words. No changes were made to that word pool in 3A.
 
-`words.json` is the single source of game words. Use a JSON array of Arabic strings, at least 36 distinct words. Change that one file, commit, and let Cloudflare rebuild. Words are imported at build time; no parallel copy or embedded fallback list exists. The provided pool contains 150 words from the supplied PDF.
+## Remaining phases
 
-## Optional local commands (not required to use GitHub deployment)
+3B connects the game engine to these rooms, moves the secret board and game actions to the server, enforces role-specific gameplay views, and adds same-room rematches. 3C adds match-aware pause/replacement/recovery and timed admin transfer. The basic lobby reconnection and empty-room cleanup here are foundations, not a completed match recovery system.
 
-With Node 22.12+ installed:
+## Implementation
 
-- npm install
-- npm test
-- npm run dev:worker (builds UI and serves the whole app, usually localhost:8787)
-- npm run check:deploy (build and Worker bundle validation without publishing)
+- `room-core.js`: pure roster, approval, role, settings, readiness and private-view rules.
+- `room-server.js`: PartyServer adapter, persisted room state, serialized mutations, socket authentication and live snapshots.
+- `room-api.js`: private code-based HTTP routes and same-origin checks.
+- `room-client.js`: room entry, browser seat storage, invitation generation, WebSocket protocol, heartbeats and reconnect.
+- `room-ui.js`, `room-text.js`: bilingual lobby screens.
+- `worker.js`, `wrangler.jsonc`: existing Worker plus Rooms routing and additive v2 SQLite migration.
+- `room.test.js`, `room-ui.test.js`: room-domain, adapter/HTTP/transport, configuration and component checks.
 
-Generated node_modules/, dist/, and .wrangler/ are ignored and must not be committed. All authored files live at root.
+Only a SHA-256 session-token hash is stored server-side. Plain tokens stay in browser storage and travel in POST bodies / the WebSocket authentication message, never invitation URLs or public snapshots. Player IDs and names alone do not grant a seat. No login is required. Pending applicants cannot inspect the roster, settings, or other applicants. Server commands use the authenticated socket identity, not a client-supplied player ID. A short per-connection action limit and bounded request sizes are enforced.
 
-## Verification in this delivery
+## Optional local commands
 
-- 31 standalone rules tests and 11 component/input tests pass (42 total); randomized rule checks complete 50 seeded matches.
-- JavaScript syntax checks pass.
-- Node-based component smoke checks exercise timer editing, both UI languages, perspective switching, suspects, immediate reveals, private highlights, initial draw gating, victory effects, and rematch.
-- Full dependency installation/build and real browser visual checks could not run in the preparation environment. Cloudflare will run the build and tests during deployment. The Node component smoke check is not a substitute for a real browser playtest.
+Node 22.12+: `npm install`, `npm test`, then `npm run dev:worker`. Use the Worker-served local URL printed by Wrangler (usually localhost:8787). Generated node_modules/, dist/, and .wrangler/ are ignored and do not belong in GitHub.
 
-## Revision 0.2.1 changes
+## Verification
 
-- Clue count caps are each team’s original target: Standard 9/8; Expanded blue 11/red 10. Neither reveals nor yellow credits lower these caps.
-- English and Arabic UI, with Arabic board words and clues. Language preference is local to the browser.
-- Purely local, spy-specific word-frame highlights; these follow swapped words, never affect match state, and reset on rematch.
-- Immediate reveal icons only on suspected words, replacing both permanent reveal controls and the reveal confirmation dialog. Rematch confirmation remains.
-- Arabic roles use الجاسوس and العميل; nomination is تحديد / Suspect.
-- Victory banner, trophy, team-colored confetti, and reduced-motion support.
-- Timer toggle is independent from its text draft. Invalid or unfinished inputs remain editable and block Start with a localized error.
-- The key is hidden from both spies during Expanded setup, including after both initial draws until admin Start play.
-- Team-colored glow on the board frame and active team progress card.
-- Full-width mobile board; team progress/history in a button-opened sidebar; spy and action controls below the board. Numeric/text inputs use mobile-safe font sizing.
-
-English UI changes interface labels, help, errors, and event descriptions only. Player names, board words and clues are user data and stay as entered.
+85 automated tests pass, including the previous 42 Phase 2 checks, 50 seeded simulated local matches, room permission/isolation/capacity tests, server-adapter simulations with multiple clients, storage recreation, HTTP routing, private view projections and component interactions. These simulations use in-process storage/socket adapters. Actual Cloudflare deployment, cross-device networking, Vite dependency build and browser visual QA were unavailable in the preparation environment and still need verification on your deployment.

@@ -18,6 +18,10 @@
       {
         "name": "Setup",
         "class_name": "SetupServer"
+      },
+      {
+        "name": "Rooms",
+        "class_name": "RoomsServer"
       }
     ]
   },
@@ -26,6 +30,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "SetupServer"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "RoomsServer"
       ]
     }
   ]
