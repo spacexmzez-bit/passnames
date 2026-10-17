@@ -64,3 +64,15 @@ test('online admin rematch requires confirmation and never resets only the local
 test('online countdown uses server clock offset without changing server state',()=>{
  const h=harness(),o=online(h);h.render(o.remote);const now=Date.now();h.slots[13]=now;o.remote.clockOffset=30000;o.remote.view.phase='guess';o.remote.view.deadline=now+45000;const before=JSON.stringify(o.remote.view);const tree=h.render(o.remote);const timer=find(tree,n=>n.props.className?.startsWith('timer '));assert(content(timer).includes('15s'));assert.equal(JSON.stringify(o.remote.view),before);assert.equal(o.actions.length,0);
 });
+
+test('recovery screen explains missing roles and saved seconds, then allows only admin resume',()=>{
+ const h=harness(),o=online(h,'spy');o.remote.view.pause=true;o.remote.view.recovery={kind:'recovery',remainingMs:45000,canResume:false,missing:[{team:'red',role:'spy',name:'Red spy'}],replacements:[]};let tree=h.render(o.remote);
+ assert(content(tree).includes('Red spy offline'));assert(content(tree).includes('45 seconds'));assert(button(tree,'Resume').props.disabled);assert(button(tree,'Recovery controls'));
+ o.remote.view.recovery.missing=[];o.remote.view.recovery.canResume=true;tree=h.render(o.remote);assert(!button(tree,'Resume').props.disabled);click(button(tree,'Resume'));assert.equal(o.actions.at(-1).type,'PAUSE');assert.equal(h.slots[3],null);
+});
+test('returning spectator has no agent tools or interactive word/reveal controls',()=>{
+ const h=harness(),o=online(h);o.remote.view.me.role='spectator';o.remote.view.players.find(p=>p.id===o.remote.view.me.id).role='spectator';let tree=h.render(o.remote);assert(content(tree).includes('Spectator'));assert(content(tree).includes('spectator for this match'));assert(all(tree,n=>n.props.className==='word-face').every(n=>n.props.disabled));assert(!all(tree,n=>n.props.className==='reveal-icon').length);assert(!all(tree,n=>n.props.className==='panel action-panel').length);assert.equal(o.actions.length,0);
+});
+test('paused initial deal presents recovery before Start play and keeps spy key concealed',()=>{
+ const h=harness(),o=online(h,'spy',{mode:'expanded',timerSeconds:0,manualDraw:true});o.remote.view.pause=true;o.remote.view.recovery={kind:'recovery',remainingMs:null,canResume:false,missing:[{team:'red',role:'agent',name:''}]};const tree=h.render(o.remote);assert(content(tree).includes('No agent is connected for Red'));assert(!all(tree,n=>n.type==='button'&&content(n)==='Start play').length);assert(!all(tree,n=>n.props.className?.includes('color-blue')).length);
+});

@@ -48,7 +48,8 @@ export default function App({remote=null}={}){
  let poolError='';try{checkPool(words);}catch(e){poolError=message(lang,e.message);}
  useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';save('passnames-language',lang);},[lang]);
  useEffect(()=>{if(!view||view.deadline===null||view.pause)return;setNow(Date.now());const id=setInterval(()=>{const current=Date.now();setNow(current);if(!remote)setState(s=>s?transition(s,{type:'TICK'},current):null);},200);return()=>clearInterval(id);},[view?.deadline,view?.pause,!!remote]);
- useEffect(()=>{setClueText('');setClueCount(1);setTool(null);setSelected([]);setError('');setConfirm(false);},[view?.turnNumber,identity,view?.id]);
+ useEffect(()=>{setClueText('');setClueCount(1);setTool(null);setSelected([]);setError('');setConfirm(false);},[view?.turnNumber,identity,view?.id,view?.me.role]);
+ useEffect(()=>{if(view?.pause){setTool(null);setSelected([]);}},[view?.pause]);
  useEffect(()=>{if(view?.phase!=='clue'&&tool==='swap'){setTool(null);setSelected([]);}},[view?.phase]);
  useEffect(()=>{const fn=e=>{if(e.key==='Escape'){setHelp(false);setDrawer(false);setConfirm(false);setTool(null);setSelected([]);}};window.addEventListener('keydown',fn);return()=>window.removeEventListener('keydown',fn);},[]);
  useEffect(()=>{if(!drawer&&!help&&!confirm)return;const prior=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=prior;};},[drawer,help,confirm]);
@@ -69,7 +70,7 @@ export default function App({remote=null}={}){
    setHighlights(all=>{const old=all[identity]||[];return {...all,[identity]:old.includes(cell.word)?old.filter(w=>w!==cell.word):[...old,cell.word]};});
    return;
   }
-  if(view.pause||['deal','finished'].includes(view.phase)||cell.revealed)return;
+  if(view.me.role!=='agent'||view.pause||['deal','finished'].includes(view.phase)||cell.revealed)return;
   if(tool==='swap')setSelected(ids=>ids.includes(cell.id)?ids.filter(id=>id!==cell.id):ids.length<2?[...ids,cell.id]:[ids[1],cell.id]);
   else if(tool==='scan')setSelected([cell.id]);
   else dispatch('MARK',{cell:cell.id});
@@ -81,7 +82,7 @@ export default function App({remote=null}={}){
   h('div',{className:'score-head'},h('strong',null,t('team',{team:t(team)})),h('span',{className:'score-number',dir:'ltr'},info.score,h('small',null,' / '+info.target))),
   h('div',{className:'progress'},h('span',{style:{width:Math.min(100,info.score/info.target*100)+'%'}})),
   h('div',{className:'team-detail'},h('span',null,t('remaining',{n:Math.max(0,info.target-info.score)})),mode==='expanded'&&h('span',null,t('yellowScore',{n:info.yellow})+' · '+t('streakShort',{n:info.streak}))),
-  h('div',{className:'roster'},view.players.filter(p=>p.team===team).map(p=>h('span',{key:p.id,className:p.id===identity?'me':''},p.name+' · '+t(p.role)))));
+  h('div',{className:'roster'},view.players.filter(p=>p.team===team).map(p=>h('span',{key:p.id,className:p.id===identity?'me':''},p.name+' · '+t(p.role)+(remote?.presence?.[p.id]===false?' · '+t('offlinePlayer'):'')))));
  }
  function lobby(){return h('main',{className:'lobby'},
   h('div',{className:'intro'},h('span',{className:'eyebrow'},t('tagline')),h('h1',null,t('title')),h('p',null,t('subtitle'))),
@@ -102,16 +103,16 @@ export default function App({remote=null}={}){
   (error||poolError)&&h('p',{className:'error',role:'alert'},poolError||message(lang,error)),
   h('div',{className:'launch-row'},h(Button,{kind:'gold large',disabled:!!poolError,onClick:start},t('start')),h(Button,{kind:'quiet',onClick:checkServer},t('serverCheck')),h('span',{role:'status'},health?t(health):'')),h('p',{className:'fine'},t('wordSource')));
  }
- function gameBoard(){return h('div',{className:'board','data-size':view.size,style:{'--size':view.size},dir:'rtl','aria-label':t('brand')},view.board.map(cell=>{
+ function gameBoard(){return h('div',{className:'board','data-size':view.size,'data-team':view.me.team,style:{'--size':view.size},dir:'rtl','aria-label':t('brand')},view.board.map(cell=>{
   const color=cell.color;
   const isSpy=view.me.role==='spy';
   const highlighted=isSpy&&(highlights[identity]||[]).includes(cell.word);
   const mine=cell.marks.includes(view.me.name), suspect=cell.marks.length>0;
   const targeted=selected.includes(cell.id);
-  const interactive=isSpy?view.phase!=='deal':ready&&!cell.revealed&&!view.pause&&!['deal','finished'].includes(view.phase);
+  const interactive=isSpy?view.phase!=='deal':view.me.role==='agent'&&ready&&!cell.revealed&&!view.pause&&!['deal','finished'].includes(view.phase);
   const canReveal=activeAgent&&view.phase==='guess'&&!tool&&!cell.revealed&&suspect;
   const scan=view.scans.filter(s=>s.cell===cell.id).at(-1);
-  return h('div',{key:cell.id,'data-cell':cell.id,className:'word-cell '+(color?'color-'+color:'concealed')+(cell.revealed?' revealed':'')+(suspect?' suspected':'')+(mine?' own-suspect':'')+(highlighted?' spy-highlight':'')+(targeted?' selected':'')},
+  return h('div',{key:cell.id,'data-cell':cell.id,'data-revealed':cell.revealed?'true':'false',className:'word-cell '+(color?'color-'+color:'concealed')+(cell.revealed?' revealed':'')+(suspect?' suspected':'')+(mine?' own-suspect':'')+(highlighted?' spy-highlight':'')+(targeted?' selected':'')},
    h('button',{type:'button',className:'word-face',disabled:!interactive,onClick:()=>boardClick(cell),'aria-pressed':interactive?(isSpy?highlighted:mine||targeted):undefined,'aria-label':cell.word+(color?' · '+t(color):'')+(highlighted?' · '+t('highlighted'):'')},
     h('span',{className:'cell-index',dir:'ltr'},cell.id+1),h('span',{className:'word',lang:'ar',dir:'rtl'},cell.word),
     color&&h('span',{className:'identity',dir:lang==='ar'?'rtl':'ltr'},cell.revealed?'✓ '+t(color):t(color)),
@@ -121,7 +122,7 @@ export default function App({remote=null}={}){
    canReveal&&h('button',{type:'button',className:'reveal-icon','aria-label':t('reveal',{word:cell.word}),title:t('reveal',{word:cell.word}),onClick:e=>{e.stopPropagation();dispatch('GUESS',{cell:cell.id});}},h(ClickIcon)));
  }));}
  function actionsPanel(){
-  if(mode!=='expanded')return null;
+  if(mode!=='expanded'||view.me.role==='spectator')return null;
   if(view.me.role==='spy')return view.settings.manualDraw&&h('section',{className:'panel action-panel'},h('h3',null,t('drawTitle')),h('p',{className:'muted'},t(view.canDraw?'drawReady':'drawWaiting')),h(Button,{disabled:!ready||!view.canDraw,kind:view.canDraw?'gold draw-ready':'faded',onClick:()=>dispatch('DRAW')},t('draw')),h('p',{className:'fine'},t('drawExpiry')));
   const info=view.teams[view.me.team];
   return h('section',{className:'panel action-panel'},h('div',{className:'section-heading'},h('h3',null,t('actions')),h('span',{className:'pill'},t('agentPrivate'))),h('p',{className:'fine'},t('oneAction')),
@@ -134,6 +135,15 @@ export default function App({remote=null}={}){
  }
  function controlPanel(){
   if(view.phase==='finished')return h('section',{className:'panel finish-controls'},h('p',null,t('winNote')),view.me.id===view.adminId&&h(Button,{kind:'gold',onClick:()=>setConfirm(true)},t('rematch')));
+  if(view.pause){
+   const recovery=view.recovery;
+   return h('section',{className:'panel notice recovery-panel'},h('h2',null,t('pauseTitle')),
+    h('p',null,t(recovery?.kind==='recovery'?'recoveryPause':'pauseHint')),
+    recovery?.missing?.length>0&&h('ul',null,recovery.missing.map(item=>h('li',{key:item.team+item.role},t(item.role==='spy'?'missingSpy':'missingAgents',{team:t(item.team),name:item.name})))),
+    recovery?.remainingMs!=null&&h('p',{className:'fine'},t('savedTime',{n:Math.ceil(recovery.remainingMs/1000)})),
+    recovery?.canResume&&h('p',{className:'ready-note'},t('recoveryReady')),
+    remote&&view.me.id===view.adminId&&h('div',{className:'button-row'},h(Button,{kind:'gold',disabled:!ready||!recovery?.canResume,onClick:()=>dispatch('PAUSE')},t('resume')),h(Button,{onClick:remote.onRoom},t('recoveryTools'))));
+  }
   if(view.phase==='deal'){
    const drawn=['blue','red'].every(team=>view.teams[team].initialDrawn);
    return h('section',{className:'panel pregame'},h('h2',null,t('initial')),h('p',null,t('initialHint')),
@@ -142,7 +152,6 @@ export default function App({remote=null}={}){
     view.me.id===view.adminId&&h(Button,{kind:'gold',disabled:!ready||!drawn||!!view.missingSeats,onClick:()=>dispatch('BEGIN')},t('startPlay')),
     !drawn&&h('p',{className:'fine'},t('initialRequired')));
   }
-  if(view.pause)return h('section',{className:'panel notice'},h('h2',null,t('pauseTitle')),h('p',null,t('pauseHint')));
   if(view.phase==='second')return h('section',{className:'panel second-choice'},h('h2',null,t('secondQuestion')),h('p',null,t('secondHint')),activeAgent?h('div',{className:'button-row'},h(Button,{kind:'gold',onClick:()=>dispatch('SECOND')},t('useSecond')),h(Button,{onClick:()=>dispatch('DECLINE')},t('endTurn'))):h('p',{className:'muted'},t('waitDecision',{team:t(view.active)})));
   if(view.phase==='clue'&&view.me.role==='spy'&&myTurn&&ready){
    const min=mode==='expanded'?0:1;
@@ -163,7 +172,7 @@ export default function App({remote=null}={}){
  function game(){
   const result=view.phase==='finished';
   const active=view.phase==='deal'?'none':result?view.winner:view.active;
-  const boardHint=view.phase==='deal'?t('hiddenHelp'):view.me.role==='spy'?t('spyHelp'):t('suspectHelp');
+  const boardHint=view.me.role==='spectator'?t('spectatorHint'):view.phase==='deal'?t('hiddenHelp'):view.me.role==='spy'?t('spyHelp'):t('suspectHelp');
   return h('main',{className:'game'},
    h('section',{className:'view-switch'},!remote&&h('label',{htmlFor:'player-view'},t('perspective')),!remote&&h('select',{id:'player-view',value:viewer,onChange:e=>setViewer(e.target.value)},view.players.map(p=>h('option',{key:p.id,value:p.id},p.name+' · '+t(p.team)+' · '+t(p.role)))),remote&&h('strong',{dir:'auto'},view.me.name+' · '+t(view.me.team)),h('span',{className:'role-badge '+view.me.team},t(view.me.role)),view.me.id===view.adminId&&h('span',{className:'admin-badge'},t('admin'))),
    result&&h(React.Fragment,null,h(Celebration,{team:view.winner}),h('section',{className:'win-banner '+view.winner,role:'status','aria-live':'polite'},h(Trophy),h('div',null,h('span',{className:'eyebrow'},t('missionComplete')),h('h1',null,t('won',{team:t(view.winner)}))))),
@@ -173,9 +182,9 @@ export default function App({remote=null}={}){
    h('section',{className:'board-frame turn-'+active+(result?' victory-frame':'')},h('p',{className:'board-caption'},boardHint),
     tool&&h('div',{className:'tool-bar'},h('strong',null,t(tool==='swap'?'chooseSwap':'chooseScan')),h('span',{dir:'ltr'},selected.length+' / '+(tool==='swap'?2:1)),h(Button,{kind:'gold',disabled:selected.length!==(tool==='swap'?2:1),onClick:playTool},t('useTool',{card:t(tool)})),h(Button,{onClick:()=>{setTool(null);setSelected([]);}},t('cancel'))),
     gameBoard()),
-   view.missingSeats&&h('p',{className:'warning'},t('missingSeatsHint')),
+   view.missingSeats&&!view.recovery&&h('p',{className:'warning'},t('missingSeatsHint')),
    h('div',{className:'tools-dock'},controlPanel(),actionsPanel()),
-   h('footer',{className:'game-footer'},h('span',null,t(remote?'onlineRefreshHint':'refreshHint')),view.me.id===view.adminId&&h('div',{className:'button-row'},!['finished','deal'].includes(view.phase)&&h(Button,{disabled:!ready||!!view.missingSeats,onClick:()=>dispatch('PAUSE')},t(view.pause?'resume':'pauseTest')),!result&&h(Button,{kind:'danger',onClick:()=>setConfirm(true)},t('rematch')))),
+   h('footer',{className:'game-footer'},h('span',null,t(remote?'onlineRefreshHint':'refreshHint')),view.me.id===view.adminId&&h('div',{className:'button-row'},!['finished','deal'].includes(view.phase)&&(!remote||!view.pause)&&h(Button,{disabled:!ready||!!view.missingSeats,onClick:()=>dispatch('PAUSE')},t(view.pause?'resume':'pauseTest')),!result&&h(Button,{kind:'danger',onClick:()=>setConfirm(true)},t('rematch')))),
    drawer&&h('div',{className:'drawer-overlay',onClick:()=>setDrawer(false)},h('aside',{className:'team-drawer',role:'dialog','aria-modal':true,'aria-labelledby':'drawer-title',onClick:e=>e.stopPropagation()},h('div',{className:'section-heading'},h('h2',{id:'drawer-title'},t('teamProgress')),h(Button,{autoFocus:true,onClick:()=>setDrawer(false)},t('close'))),teamPanel('blue'),teamPanel('red'),history())));
  }
  return h('div',{className:'app',dir:lang==='ar'?'rtl':'ltr',lang},

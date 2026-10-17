@@ -50,7 +50,7 @@ export class RoomConnection{
   clearInterval(this.heartbeat);this.heartbeat=setInterval(()=>{
    if(socket.readyState!==1)return;
    if(Date.now()-this.lastSeen>65000){socket.close();return;}
-   socket.send('ping');
+   socket.send(JSON.stringify({type:'HEARTBEAT'}));
   },20000);
  }
  send(action){

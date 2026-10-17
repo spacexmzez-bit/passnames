@@ -84,9 +84,9 @@ test('standard starts without deal, supports unlimited, and disallows zero and a
  await clue(f,'unlimited');assert.equal(f.server.lobby.match.clue.count,'unlimited');for(const c of f.clients)assert.deepEqual(view(c).match.hand,[]);
 });
 test('server alarms end guessing without client ticks; late stale guesses never reveal',async()=>{
- const f=await setup({mode:'expanded',timerSeconds:10,manualDraw:false});await begin(f);assert.equal(f.storage.alarm,null);await clue(f);
+ const f=await setup({mode:'expanded',timerSeconds:10,manualDraw:false});await begin(f);assert(f.storage.alarm>Date.now());await clue(f);
  assert.equal(f.storage.alarm,f.server.lobby.match.deadline);const agent=f.clients[1],id=cell(f,'blue');await game(f,agent,'MARK',{cell:id});const stale=envelope(agent,{type:'GUESS',cell:id});
- f.server.lobby.match.deadline=Date.now()-1;const result=await command(f,agent,'GAME',stale);assert.equal(result.error,'STALE_ACTION');assert.equal(f.server.lobby.match.active,'red');assert.equal(f.server.lobby.match.board[id].revealed,false);assert.equal(f.storage.alarm,null);
+ f.server.lobby.match.deadline=Date.now()-1;const result=await command(f,agent,'GAME',stale);assert.equal(result.error,'STALE_ACTION');assert.equal(f.server.lobby.match.active,'red');assert.equal(f.server.lobby.match.board[id].revealed,false);assert(f.storage.alarm>Date.now());
  await clue(f);f.server.lobby.match.deadline=Date.now()-1;await f.server.onAlarm();assert.equal(view(agent).match.active,'blue');assert.equal(view(agent).match.phase,'clue');
 });
 test('clock-controlled Second Chance gives 10 seconds then restores saved guess time',async()=>{
@@ -122,12 +122,12 @@ test('manual earned draws expire at next own turn and never expose drawn card to
 });
 test('pause freezes the server alarm and only admin can resume',async()=>{
  const f=await setup({mode:'expanded',timerSeconds:60,manualDraw:false});await begin(f);await clue(f);
- assert.equal((await game(f,f.clients[1],'PAUSE')).error,'GAME_RULE');await game(f,f.clients[0],'PAUSE');assert(view(f.clients[1]).match.pause);assert.equal(f.storage.alarm,null);
+ assert.equal((await game(f,f.clients[1],'PAUSE')).error,'ADMIN_ONLY');await game(f,f.clients[0],'PAUSE');assert(view(f.clients[1]).match.pause);assert(f.storage.alarm>Date.now());
  const left=f.server.lobby.match.pause.remaining;await f.server.onAlarm();assert.equal(f.server.lobby.match.pause.remaining,left);await game(f,f.clients[0],'PAUSE');assert(!view(f.clients[1]).match.pause);assert.equal(f.storage.alarm,f.server.lobby.match.deadline);
 });
 test('refresh and object recreation restore the same match, seat, private view and timer',async()=>{
  const f=await setup({mode:'expanded',timerSeconds:60,manualDraw:false});await begin(f);await clue(f);await game(f,f.clients[1],'MARK',{cell:0});
- const before=view(f.clients[1]).match;const g=await fixture(f.storage);const agent=await connect(g,2);assert.equal(view(agent).me.id,f.clients[1].state.playerId);assert.deepEqual(view(agent).match,before);assert.equal(g.storage.alarm,before.deadline);assert(view(agent).match.board.every(c=>c.color===null));
+ const before=view(f.clients[1]).match;const g=await fixture(f.storage);const agent=await connect(g,2);assert.equal(view(agent).me.id,f.clients[1].state.playerId);assert.equal(view(agent).match.id,before.id);assert.deepEqual(view(agent).match.board,before.board);assert.deepEqual(view(agent).match.clues,before.clues);assert(view(agent).match.pause);assert(view(agent).match.recovery.remainingMs<=60000);assert(view(agent).match.board.every(c=>c.color===null));
 });
 test('midgame arrivals stay waiting with no match data even in unlocked rooms',async()=>{
  const f=await setup();await begin(f);await f.server.onRequest(req('/join',{name:'Late',token:token(9)}));const late=await connect(f,9);assert.equal(view(late).phase,'waiting');assert(!('match'in view(late)));assert.equal(view(late).players.length,0);
@@ -140,7 +140,7 @@ test('playing roles/settings cannot be reopened using BACK; a spy cannot become 
 });
 test('kicking a required seat revokes all views, freezes play and permits a same-room rematch',async()=>{
  const f=await setup({mode:'expanded',timerSeconds:60,manualDraw:false});await begin(f);await clue(f);const oldId=f.server.lobby.matchId;await command(f,f.clients[0],'KICK',{targetId:f.clients[3].state.playerId});
- assert(f.clients[3].closed);assert(view(f.clients[0]).match.pause);assert(view(f.clients[0]).match.missingSeats);assert.equal(f.storage.alarm,null);assert.equal((await game(f,f.clients[0],'PAUSE')).error,'MISSING_SEATS');
+ assert(f.clients[3].closed);assert(view(f.clients[0]).match.pause);assert(view(f.clients[0]).match.missingSeats);assert(f.storage.alarm>Date.now());assert.equal((await game(f,f.clients[0],'PAUSE')).error,'MISSING_SEATS');
  assert.equal((await command(f,f.clients[0],'REMATCH',{matchId:oldId})).type,'ack');assert.equal(f.server.lobby.phase,'lobby');assert(!f.server.lobby.match);assert.equal(view(f.clients[0]).code,CODE);assert.equal(view(f.clients[1]).match,null);
 });
 test('departing admin transfers ownership without exposing roles or resetting the match',async()=>{
@@ -149,7 +149,7 @@ test('departing admin transfers ownership without exposing roles or resetting th
 });
 test('rematch clears server key, hands, clues and old match IDs but keeps roster and settings',async()=>{
  const f=await setup();await begin(f);await clue(f);const id=f.server.lobby.matchId,roster=structuredClone(f.server.lobby.players),settings=structuredClone(f.server.lobby.settings);
- assert.equal((await command(f,f.clients[1],'REMATCH',{matchId:id})).error,'ADMIN_ONLY');await command(f,f.clients[0],'REMATCH',{matchId:id});assert.deepEqual(f.server.lobby.players,roster);assert.deepEqual(f.server.lobby.settings,settings);assert.equal(f.storage.alarm,null);const persisted=await f.storage.get('lobby');assert(!persisted.match);assert(!persisted.matchId);
+ assert.equal((await command(f,f.clients[1],'REMATCH',{matchId:id})).error,'ADMIN_ONLY');await command(f,f.clients[0],'REMATCH',{matchId:id});assert.deepEqual(f.server.lobby.players,roster);assert.deepEqual(f.server.lobby.settings,settings);assert(f.storage.alarm>Date.now());const persisted=await f.storage.get('lobby');assert(!persisted.match);assert(!persisted.matchId);
  await command(f,f.clients[0],'START');await command(f,f.clients[0],'LAUNCH');assert.notEqual(f.server.lobby.matchId,id);assert.equal(f.server.lobby.match.clues.length,0);assert.equal((await command(f,f.clients[0],'REMATCH',{matchId:id})).error,'STALE_MATCH');
 });
 test('black card ends the game for every device, then rematch stays in the same room',async()=>{
@@ -159,7 +159,7 @@ test('black card ends the game for every device, then rematch stays in the same 
 test('failed storage writes never apply or broadcast a successful guess',async()=>{
  const f=await setup();await begin(f);await clue(f);const id=cell(f,'blue');await game(f,f.clients[1],'MARK',{cell:id});const before=JSON.stringify(f.server.lobby);f.storage.fail=true;assert.equal((await game(f,f.clients[1],'GUESS',{cell:id})).error,'SERVER_ERROR');assert.equal(JSON.stringify(f.server.lobby),before);assert(!view(f.clients[3]).match.board[id].revealed);
 });
-test('an empty timed room keeps its nearest deadline then expires without a result archive',async()=>{
- const f=await setup({mode:'expanded',timerSeconds:10,manualDraw:false});await begin(f);await clue(f);for(const c of f.clients)c.closed=true;await f.server.onClose();assert.equal(f.storage.alarm,f.server.lobby.match.deadline);f.server.lobby.match.deadline=Date.now()-1;await f.server.onAlarm();assert.equal(f.server.lobby.match.active,'red');assert.equal(f.storage.alarm,f.server.lobby.emptySince+EMPTY_ROOM_TTL);
+test('an empty timed room freezes its deadline then expires without a result archive',async()=>{
+ const f=await setup({mode:'expanded',timerSeconds:10,manualDraw:false});await begin(f);await clue(f);for(const c of f.clients)c.closed=true;await f.server.onClose();assert.equal(f.server.lobby.match.deadline,null);assert(f.server.lobby.match.pause);assert.equal(f.storage.alarm,f.server.lobby.adminAway.since+60000);await f.server.onAlarm();assert.equal(f.server.lobby.match.active,'blue');
  f.server.lobby.emptySince=Date.now()-EMPTY_ROOM_TTL-1;await f.server.onAlarm();assert.equal(f.server.lobby,null);assert.equal(f.storage.data.size,0);
 });
