@@ -153,7 +153,7 @@ export function transition(state, action, now = Date.now(), rng = Math.random) {
       s.pause = null; log(s, 'استؤنفت المباراة.');
     } else {
       s.pause = {remaining:s.deadline === null ? null : Math.max(0,s.deadline-now)};
-      s.deadline = null; log(s, 'أُوقفت المباراة مؤقتًا للاختبار المحلي.');
+      s.deadline = null; log(s, 'أُوقفت المباراة مؤقتًا.');
     }
     return s;
   }

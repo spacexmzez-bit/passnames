@@ -1,10 +1,10 @@
-# Phase 2 rules contract
+# Passnames rules contract — Phase 3B
 
 ## Modes and players
 
 Standard: 25 cards; randomly chosen starting team has 9, opponent 8, neutrals 7, assassin 1. Positive clues and unlimited; no zero or action cards.
 Expanded: 36 cards; blue 11, red 10, neutral 11, yellow 2, assassin 2. Blue starts. Positive clues, zero, unlimited, and action cards. A revealed yellow is credited to its revealing team, continues guessing, and counts toward that team's target (11 blue / 10 red). It never reduces the other team's target. Revealing any team's final required colored card wins for that team immediately, even on its opponent's guess. Assassin immediately loses for the revealing team.
-4–10 players, exactly one spymaster and at least one agent per team. First roster member is admin. Roles/team/settings change only in the lobby. A rematch returns to the lobby and clears the old board/history while preserving roster/settings. Mid-match rematch requires admin confirmation.
+4–10 players, exactly one spymaster and at least one agent per team. The room creator is admin; explicit departure transfers ownership to another admitted member. The local playtest uses its first persona as admin. Roles/team/settings change only in the lobby. A rematch returns to the lobby and clears the old board/history while preserving roster/settings. Mid-match rematch requires admin confirmation.
 
 ## Clues and guesses
 
@@ -14,8 +14,8 @@ Suspecting toggles a per-player mark without spending attempts or revealing. Onl
 
 ## Time
 
-Optional per match: 10–600 seconds, locked once started. No clue-preparation timer. Start guess timer when clue is submitted. Timeout ends turn and breaks streak even if the numerical target was already achieved. Local timer uses a deadline, rather than a network tick.
-Second Chance decision in a timed match has a new 10-second deadline. Save remaining guess time on entering the decision. Accepting resumes that saved amount, never a full new guess timer. Decline/decision timeout ends turn. Untimed matches have no decision or guessing timer. Card use cannot otherwise reset time. Admin pause is a local test convenience, freezing the currently running deadline.
+Optional per match: 10–600 seconds, locked once started. No clue-preparation timer. Start guess timer when clue is submitted. Timeout ends turn and breaks streak even if the numerical target was already achieved. Online timers use server deadlines and Durable Object alarms; browsers only display countdowns. Local playtest also uses deadlines.
+Second Chance decision in a timed match has a new 10-second deadline. Save remaining guess time on entering the decision. Accepting resumes that saved amount, never a full new guess timer. Decline/decision timeout ends turn. Untimed matches have no decision or guessing timer. Card use cannot otherwise reset time. Admin pause freezes the currently running deadline in both online and local play.
 
 ## Action deck and draws
 
@@ -33,7 +33,9 @@ Second Chance: after neutral, only if there are guesses remaining and an eligibl
 
 ## Storage and privacy
 
-Only the first local persona's name and interface language are remembered in browser storage. No ongoing state/history/results persist across refresh. Finished state remains on screen until rematch/refresh; no archive is created. Rule projection hides unrevealed colors from agents, private hands/scans/action events from spies/opponents, and never projects deck order. Browser-local testing is not secure against developer tools; server secrecy belongs to Phase 3.
+Online: the browser remembers the chosen name, interface language and private room-session token. The server stores only a hash of that token, membership, settings and current match state. Refresh/reconnect restores the same seat and role. Keys and deck order are server-only; only the role-specific projection is sent to each player. New arrivals during a match wait for the next editable lobby and see no match data. Finished state remains visible until rematch or room expiry, with no separate results archive. Rematch deletes the stored old match/history while preserving room membership/settings. Empty rooms expire after one hour; the final admitted member explicitly leaving retires the room.
+
+Local playtest: personas and board are local and not secure against developer tools; refreshing clears that local match. The first persona's name and interface language are remembered. Online secrecy comes from server-held state and authenticated, role-specific projections, not CSS hiding.
 
 ## Interface assistance and layout
 
@@ -43,12 +45,14 @@ Spies can toggle private word-frame highlights in their local perspective after 
 
 Only suspected cards show the top-right immediate reveal icon to active-team agents. Spies have no reveal icons. Team progression and logs live in a button-opened sidebar. The board occupies the full main content width with active-team glow. Spy/action controls appear below it. Victory adds a banner, trophy and confetti; reduced-motion disables motion.
 
-## Phase 3A rooms (gameplay remains a local test until 3B)
+## Private rooms and match lifecycle
 
-Default site entry now creates/joins private rooms. A room is unlisted, has a random 9-character code and invitation link, requires admin approval by default, and holds at most 10 admitted members. Pending requests are bounded separately. Invitation links never bypass approval. Unlocked rooms allow direct joins only with a code/link; there is no public discovery.
+A room is unlisted, has a random 9-character code and invitation link, requires admin approval by default, and holds at most 10 admitted members. Pending requests are bounded separately to 10. Invitation links never bypass approval. Unlocked rooms allow direct joins only with a code/link while the room is editable; there is no public discovery. Applicants arriving in Ready or during a match remain pending until the next editable lobby.
 
-The creator is admin and initially Blue spy. Admin may approve, reject, kick, lock/unlock, configure settings, and assign roles. Members may assign only themselves. At most one spy per team. Confirm lineup requires every admitted player to have a team, at least 4 members, and both teams to have a connected spy and at least one connected agent. Additional disconnected agents do not block ready teams. Confirming freezes settings/roles into a Ready checkpoint, not a live match. Returning to lobby permits edits. Required-player disconnection, kicking or admitted departure reopens the checkpoint.
+The creator is admin and initially Blue spy. Admin may approve, reject, kick, lock/unlock, configure settings, and assign roles. Members may assign only themselves. At most one spy per team. Confirm lineup requires every admitted player to have a team, at least 4 members, and both teams to have a connected spy and at least one connected agent. Additional disconnected agents do not block ready teams. Confirming freezes settings/roles into a Ready checkpoint. Admin then starts the match; readiness is checked again on the server. Before launch, required-player disconnection, kicking or admitted departure reopens the checkpoint. Playing roles and settings cannot be reopened through a lobby command; use confirmed Rematch.
 
-Anonymous private browser tokens restore seats after refresh and basic reconnect; a name or player ID is not proof of identity. Kicking/declining revokes that saved seat for this room. Explicit admin departure transfers rights to an admitted member; a disconnected admin keeps their seat until they reconnect (timed failover in 3C). The final admitted member leaving retires the room. Empty rooms expire after one hour. No game boards, results or match archives are stored by 3A.
+Anonymous private browser tokens restore seats after refresh and basic reconnect; a name or player ID is not proof of identity. Kicking/declining revokes that saved seat for this room. Explicit admin departure transfers rights to an admitted member; a disconnected admin retains the seat pending 3C timed failover. Online actions use the authenticated socket identity, never a browser-supplied player ID. Shared mutations are serialized; match/turn/version checks prevent stale reveals or a previous match's commands from acting on a new match. Marks do not invalidate other agents' reveal versions.
 
-The existing Phase 2 local game, including its local perspective selector, remains separately available and retains all rules above. Online gameplay and rematches are 3B; match-aware recovery and timed admin transfer are 3C.
+Network disconnects preserve seats and basic reconnect restores play, but automatic disconnect pause/failover/replacement belongs to 3C. Timers continue unless paused by admin. If a required spy or all agents of a team explicitly leave or are kicked, running play freezes and cannot resume with missing roles; pregame Start play is blocked. Rematch restores editable setup. No midmatch role replacement is allowed yet, especially spy-to-agent after key access.
+
+The complete Phase 2 local playtest remains separately available, including its local perspective selector. Online games have one fixed perspective for the authenticated seat. Admin can rematch during play or after victory, with confirmation, keeping everyone in the same room.

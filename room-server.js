@@ -1,3 +1,4 @@
+import {matchCommand,matchView,tickMatch,syncMatch,GameRuleError} from './room-match.js';
 import {RoomError,createLobby,joinLobby,lobbyAction,lobbyView,memberForHash,readiness,EMPTY_ROOM_TTL} from './room-core.js';
 export async function sessionHash(token){
  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw new RoomError('SESSION_INVALID',401);
@@ -15,7 +16,7 @@ export async function readJSON(request){
  try{const value=JSON.parse(text);if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value;}catch{throw new RoomError('BAD_JSON');}
 }
 // Base injection keeps transport/storage logic independently testable in Node.
-export function makeRoomServer(Base){return class extends Base{
+export function makeRoomServer(Base,words=[]){return class extends Base{
  static options={hibernate:true};
  lobby=null;
  work=Promise.resolve();
@@ -33,13 +34,18 @@ export function makeRoomServer(Base){return class extends Base{
  }
  async schedule(){
   if(!this.lobby)return;
-  if(this.online().length){
-   if(this.lobby.emptySince!==null)await this.persist({...this.lobby,emptySince:null});
-   await this.ctx.storage.deleteAlarm();
-  }else{
-   if(this.lobby.emptySince===null)await this.persist({...this.lobby,emptySince:Date.now()});
-   await this.ctx.storage.setAlarm(this.lobby.emptySince+EMPTY_ROOM_TTL);
-  }
+  const present=this.online().length>0;
+  if(present&&this.lobby.emptySince!==null)await this.persist({...this.lobby,emptySince:null});
+  if(!present&&this.lobby.emptySince===null)await this.persist({...this.lobby,emptySince:Date.now()});
+  const deadlines=[];
+  if(this.lobby.emptySince!==null)deadlines.push(this.lobby.emptySince+EMPTY_ROOM_TTL);
+  if(this.lobby.match?.deadline!=null&&!this.lobby.match.pause)deadlines.push(this.lobby.match.deadline);
+  if(deadlines.length)await this.ctx.storage.setAlarm(Math.min(...deadlines));else await this.ctx.storage.deleteAlarm();
+ }
+ async advance(){
+  if(!this.lobby)return;
+  const next=tickMatch(this.lobby);
+  if(next!==this.lobby){await this.persist(next);await this.schedule();this.publish();}
  }
  async expireIfNeeded(){
   if(this.lobby&&this.lobby.emptySince!==null&&Date.now()-this.lobby.emptySince>=EMPTY_ROOM_TTL&&!this.online().length){
@@ -52,15 +58,17 @@ export function makeRoomServer(Base){return class extends Base{
   for(const c of this.sockets()){
    const id=c.state?.playerId;if(!id)continue;
    if(!this.lobby?.players.some(p=>p.id===id)){const reason=this.lobby?'REMOVED':'ROOM_NOT_FOUND';this.send(c,{type:'removed',reason});c.close(this.lobby?4403:4404,reason);continue;}
-   this.send(c,{type:'snapshot',room:lobbyView(this.lobby,id,online)});
+   const room=lobbyView(this.lobby,id,online);
+   if(room.phase!=='waiting')room.match=matchView(this.lobby,id);
+   this.send(c,{type:'snapshot',serverNow:Date.now(),room});
   }
  }
  async onRequest(request){return this.exclusive(async()=>{
   try{
-   if(request.method==='GET'&&new URL(request.url).pathname==='/health')return Response.json({ok:true,service:'Rooms',phase:'3A'});
+   if(request.method==='GET'&&new URL(request.url).pathname==='/health')return Response.json({ok:true,service:'Rooms',phase:'3B'});
    if(request.method!=='POST')throw new RoomError('NOT_FOUND',404);
    const path=new URL(request.url).pathname;if(!['/create','/join'].includes(path))throw new RoomError('NOT_FOUND',404);
-   const data=await readJSON(request);await this.expireIfNeeded();
+   const data=await readJSON(request);await this.expireIfNeeded();await this.advance();
    const hash=await sessionHash(data.token);let member;
    if(path==='/create'){
     if(this.lobby)throw new RoomError('ROOM_EXISTS',409);
@@ -86,7 +94,7 @@ export function makeRoomServer(Base){return class extends Base{
    let data;try{data=JSON.parse(message);}catch{throw new RoomError('BAD_JSON');}
    if(!data||typeof data!=='object'||Array.isArray(data))throw new RoomError('BAD_JSON');
    requestId=typeof data.requestId==='string'?data.requestId.slice(0,80):null;
-   await this.expireIfNeeded();if(!this.lobby)throw new RoomError('ROOM_NOT_FOUND',404);
+   await this.expireIfNeeded();await this.advance();if(!this.lobby)throw new RoomError('ROOM_NOT_FOUND',404);
    if(data.type==='AUTH'){
     if(connection.state?.playerId)throw new RoomError('BAD_ACTION');
     const member=memberForHash(this.lobby,await sessionHash(data.token));
@@ -99,11 +107,13 @@ export function makeRoomServer(Base){return class extends Base{
    const now=Date.now(),windowAt=now-identity.windowAt>10000?now:identity.windowAt;
    const count=windowAt===identity.windowAt?identity.count+1:1;
    connection.setState({...identity,windowAt,count});if(count>45)throw new RoomError('RATE_LIMIT',429);
-   const next=lobbyAction(this.lobby,identity.playerId,data,this.online(),now);
+   const next=['LAUNCH','REMATCH','GAME'].includes(data.type)
+    ?matchCommand(this.lobby,identity.playerId,data,this.online(),words,now)
+    :syncMatch(lobbyAction(this.lobby,identity.playerId,data,this.online(),now),now);
    await this.persist(next);await this.schedule();
    this.send(connection,{type:'ack',requestId});this.publish();
   }catch(error){
-   this.send(connection,{type:'error',requestId,error:error instanceof RoomError?error.code:'SERVER_ERROR'});
+   this.send(connection,{type:'error',requestId,error:error instanceof RoomError?error.code:error instanceof GameRuleError?'GAME_RULE':'SERVER_ERROR',...(error instanceof GameRuleError?{message:error.message}:{})});
    if(['SESSION_INVALID','ROOM_NOT_FOUND'].includes(error.code))connection.close(4401,error.code);
   }
  });}
@@ -112,5 +122,5 @@ export function makeRoomServer(Base){return class extends Base{
   await this.schedule();this.publish();
  });}
  async onError(){return this.onClose();}
- async onAlarm(){return this.exclusive(async()=>{await this.expireIfNeeded();if(this.lobby)await this.schedule();});}
+ async onAlarm(){return this.exclusive(async()=>{await this.expireIfNeeded();await this.advance();if(this.lobby){await this.schedule();this.publish();}});}
 };}

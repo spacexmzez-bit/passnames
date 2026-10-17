@@ -7,14 +7,14 @@ import * as engine from './engine.js';
 import * as i18n from './i18n.js';
 import * as numerals from './ui-utils.js';
 const words=JSON.parse(readFileSync(new URL('./words.json',import.meta.url)));
-const source=readFileSync(new URL('./main.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/createRoot\(document.getElementById\('root'\)\).render\(h\((?:App|Site)\)\);/,'globalThis.TestApp=App;');
+const source=readFileSync(new URL('./game-ui.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export default function App','function App')+'\nglobalThis.TestApp=App;';
 function harness(){
  let slots=[],cursor=0;
  const createElement=(type,props,...children)=>typeof type==='function'?type({...props,children:children.length===1?children[0]:children}):{type,props:props||{},children:children.flat(Infinity).filter(x=>x!==null&&x!==undefined&&x!==false)};
  const useState=init=>{const i=cursor++;if(!(i in slots))slots[i]=typeof init==='function'?init():init;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];};
  const context=vm.createContext({React:{createElement,Fragment:'fragment'},useState,useEffect:()=>{},...engine,...i18n,...numerals,words,crypto,Date,Intl,JSON,Math,Array,Number,String,Error,Infinity,setInterval,clearInterval,setTimeout,clearTimeout,AbortSignal,fetch,localStorage:{getItem:()=>null,setItem:()=>{}}});
  vm.runInContext(source,context);
- return {slots,render(){cursor=0;return context.TestApp();}};
+ return {slots,render(remote=null){cursor=0;return context.TestApp({remote});}};
 }
 function all(node,predicate){if(!node||typeof node!=='object')return [];return [...(predicate(node)?[node]:[]),...(node.children||[]).flatMap(child=>all(child,predicate))];}
 function content(node){return typeof node==='string'||typeof node==='number'?String(node):(node?.children||[]).map(content).join('');}
@@ -38,3 +38,29 @@ test('clue selector cap remains fixed after yellows, language switch and reveals
 test('victory renders a celebration; rematch keeps settings and clears private highlights',()=>{const h=harness();start(h,'expanded');begin(h);h.slots[12]={p1:['كلمة']};h.slots[3].phase='finished';h.slots[3].winner='blue';let tree=h.render();assert(find(tree,n=>n.props.className==='confetti blue'));assert(find(tree,n=>n.props.className==='win-banner blue'));click(button(tree,'إعادة المباراة'));tree=h.render();click(button(find(tree,n=>n.props.role==='dialog'),'العودة للإعداد'));assert.equal(h.slots[3],null);assert.equal(Object.keys(h.slots[12]).length,0);assert.equal(h.slots[1].mode,'expanded');});
 test('all static engine errors and event reasons have English translations',()=>{const source=readFileSync(new URL('./engine.js',import.meta.url),'utf8');const strings=[...source.matchAll(/'([^'\n]*\p{Script=Arabic}[^'\n]*)'/gu)].map(m=>m[1]).filter(s=>/^\p{Script=Arabic}/u.test(s)&&s.endsWith('.')&&s.length>8&&!s.includes(' · ')&&!['اكتمل الهدف.','كُشفت بطاقة سوداء.'].includes(s));for(const text of strings)assert(!/\p{Script=Arabic}/u.test(i18n.message('en',text)),'Missing English: '+text);});
 test('spy highlights follow the word through a swap without leaking into another view',()=>{const h=harness();start(h,'expanded');begin(h);let tree=h.render();const beforeWord=h.slots[3].board[0].word;click(find(tree,n=>n.props.className==='word-face'));h.slots[3].teams.blue.turns=2;h.slots[3].teams.blue.hand=[{id:987,type:'swap',usableTurn:2}];h.slots[3]=engine.transition(h.slots[3],{type:'SWAP',playerId:'p2',cells:[0,1]});tree=h.render();const frame=find(tree,n=>n.props.className?.includes('spy-highlight'));assert.equal(frame.props['data-cell'],1);assert.equal(h.slots[3].board[1].word,beforeWord);h.slots[4]='p3';assert.equal(all(h.render(),n=>n.props.className?.includes('spy-highlight')).length,0);});
+
+function online(h,role='agent',settings={mode:'expanded',timerSeconds:0,manualDraw:false}){
+ const players=[{id:'blue-spy',name:'Blue spy',team:'blue',role:'spy'},{id:'blue-agent',name:'Blue agent',team:'blue',role:'agent'},{id:'red-spy',name:'Red spy',team:'red',role:'spy'},{id:'red-agent',name:'Red agent',team:'red',role:'agent'}];
+ let state=engine.createMatch(settings,players,words,1000,()=>0.5);
+ if(!settings.manualDraw)state=engine.transition(state,{type:'BEGIN',playerId:'blue-spy'},1000);
+ const actions=[],rematches=[],remote={view:{...engine.playerView(state,'blue-'+role),id:'match-one',version:1},lang:'en',onLang(){},connected:true,status:'connected',statusLabel:'Connected',clockOffset:0,onAction:a=>actions.push(a),onRematch:()=>rematches.push(true),onRoom(){}};
+ return {state,remote,actions,rematches};
+}
+test('online game has one fixed role, sends suspect actions, and never creates local game state',()=>{
+ const h=harness(),o=online(h);let tree=h.render(o.remote);assert.equal(h.slots[3],null);assert(!all(tree,n=>n.props.id==='player-view').length);assert(content(tree).includes('Blue agent'));assert(button(tree,'Room'));
+ click(find(tree,n=>n.props.className==='word-face'&&!n.props.disabled));assert.deepEqual(JSON.parse(JSON.stringify(o.actions)),[{type:'MARK',cell:0}]);assert.equal(h.slots[3],null);assert.equal(o.remote.view.board[0].color,null);
+ o.remote.connected=false;tree=h.render(o.remote);assert(all(tree,n=>n.props.className==='word-face').every(n=>n.props.disabled));
+});
+test('online spy highlights stay private on the device and clue counts keep team maximum',()=>{
+ const h=harness(),o=online(h,'spy');let tree=h.render(o.remote);click(find(tree,n=>n.props.className==='word-face'));tree=h.render(o.remote);assert.equal(o.actions.length,0);assert.equal(all(tree,n=>n.props.className?.includes('spy-highlight')).length,1);
+ const select=find(tree,n=>n.props.id==='clue-count');assert.equal(select.children.filter(n=>n.props.value!=='unlimited').at(-1).props.value,11);assert(!all(tree,n=>n.props.className==='reveal-icon').length);
+});
+test('online suspected card reveals with one click through the action callback',()=>{
+ const h=harness(),o=online(h);o.remote.view.phase='guess';o.remote.view.clue={text:'تلميح',count:1};o.remote.view.board[0].marks=['Blue agent'];const tree=h.render(o.remote);click(find(tree,n=>n.props.className==='reveal-icon'));assert.deepEqual(JSON.parse(JSON.stringify(o.actions)),[{type:'GUESS',cell:0}]);assert(!o.remote.view.board[0].revealed);assert.equal(h.slots[3],null);
+});
+test('online admin rematch requires confirmation and never resets only the local view',()=>{
+ const h=harness(),o=online(h,'spy');let tree=h.render(o.remote);click(button(tree,'Rematch'));assert.equal(o.rematches.length,0);tree=h.render(o.remote);click(button(find(tree,n=>n.props.role==='dialog'),'Back to setup'));assert.equal(o.rematches.length,1);assert.equal(h.slots[3],null);assert.equal(o.remote.view.phase,'clue');
+});
+test('online countdown uses server clock offset without changing server state',()=>{
+ const h=harness(),o=online(h);h.render(o.remote);const now=Date.now();h.slots[13]=now;o.remote.clockOffset=30000;o.remote.view.phase='guess';o.remote.view.deadline=now+45000;const before=JSON.stringify(o.remote.view);const tree=h.render(o.remote);const timer=find(tree,n=>n.props.className?.startsWith('timer '));assert(content(timer).includes('15s'));assert.equal(JSON.stringify(o.remote.view),before);assert.equal(o.actions.length,0);
+});

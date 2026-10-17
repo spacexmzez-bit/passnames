@@ -1,8 +1,9 @@
 import { Server, routePartykitRequest } from 'partyserver';
+import words from './words.json';
 import {makeRoomServer} from './room-server.js';
 import {handleRoomAPI,sameOrigin} from './room-api.js';
 import {validCode} from './room-core.js';
-export class RoomsServer extends makeRoomServer(Server) {}
+export class RoomsServer extends makeRoomServer(Server,words) {}
 export class SetupServer extends Server {
   static options = { hibernate: true };
   onRequest() { return Response.json({ ok: true, service: 'PartyServer', storage: 'SQLite' }); }

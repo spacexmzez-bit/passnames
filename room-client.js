@@ -31,11 +31,11 @@ export class RoomConnection{
   socket.onmessage=event=>{
    if(this.closed||this.socket!==socket)return;this.lastSeen=Date.now();if(event.data==='pong')return;
    let data;try{data=JSON.parse(event.data);}catch{return;}
-   if(data.type==='snapshot'){clearTimeout(this.authTimer);this.connected=true;this.attempts=0;this.onStatus('connected');this.onRoom(data.room);}
+   if(data.type==='snapshot'){clearTimeout(this.authTimer);this.connected=true;this.attempts=0;this.onStatus('connected');this.onRoom({...data.room,clockOffset:typeof data.serverNow==='number'?data.serverNow-Date.now():0});}
    else if(data.type==='ack'||data.type==='error'){
     const pending=this.pending.get(data.requestId);
-    if(pending){clearTimeout(pending.timer);this.pending.delete(data.requestId);data.type==='ack'?pending.resolve():pending.reject(Error(data.error));}
-    else if(data.type==='error')this.onError(data.error);
+    if(pending){clearTimeout(pending.timer);this.pending.delete(data.requestId);data.type==='ack'?pending.resolve():pending.reject(Error(data.error==='GAME_RULE'?data.message:data.error));}
+    else if(data.type==='error')this.onError(data.error==='GAME_RULE'?data.message:data.error);
     if(['SESSION_INVALID','ROOM_NOT_FOUND'].includes(data.error))this.removed(data.error);
    }else if(data.type==='removed')this.removed(data.reason||'REMOVED');
   };

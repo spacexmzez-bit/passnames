@@ -1,3 +1,5 @@
+import App from './game-ui.js';
+import {message} from './i18n.js';
 import React,{useEffect,useRef,useState} from 'react';
 import {RoomConnection,enterRoom,parseRoomCode,readSeat,forgetSeat,roomInvite} from './room-client.js';
 import {roomTranslator,roomError} from './room-text.js';
@@ -24,11 +26,19 @@ export default function RoomHub({onLocal}){
  const [notice,setNotice]=useState('');
  const [confirmation,setConfirmation]=useState(null);
  const connection=useRef(null),leaving=useRef(false);
+ const [roomControls,setRoomControls]=useState(false);
  const t=roomTranslator(lang);
  const admin=!!room&&room.me.id===room.adminId;
  const enabled=status==='connected'&&!busy;
  const settingKey=room?.settings?JSON.stringify(room.settings):'';
  useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';remember('passnames-language',lang);},[lang]);
+ useEffect(()=>{setRoomControls(false);},[room?.match?.id]);
+ useEffect(()=>{
+  if(!roomControls)return;
+  const previous=document.body.style.overflow;document.body.style.overflow='hidden';
+  const escape=e=>{if(e.key==='Escape')setRoomControls(false);};window.addEventListener('keydown',escape);
+  return()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',escape);};
+ },[roomControls]);
  useEffect(()=>{if(!settingKey)return;const values=JSON.parse(settingKey);setDraft({mode:values.mode,timerEnabled:values.timerSeconds>0,timerInput:String(values.timerSeconds||60),manualDraw:values.manualDraw});},[settingKey]);
  useEffect(()=>{
   if(!seat)return;
@@ -92,7 +102,7 @@ export default function RoomHub({onLocal}){
    h('section',{className:'room-summary panel'},h('div',null,h('span',{className:'eyebrow'},t('codeLabel')),h('strong',{className:'room-code',dir:'ltr'},room.code),h('p',{className:'fine'},t(room.locked?'locked':'unlocked'))),
     h('div',{className:'room-invitation'},h(Button,{kind:'gold',onClick:copyInvite},t(copied?'copied':'invite')),h('input',{'aria-label':t('invite'),readOnly:true,dir:'ltr',value:roomInvite(location.href,room.code),onFocus:e=>e.target.select()}))),
    hostOffline&&h('p',{className:'warning'},t('hostDisconnected')),
-   room.phase==='ready'&&h('section',{className:'panel room-ready'},h('h2',null,t('readyTitle')),h('p',null,t('readyHint')),admin&&h(Button,{disabled:!enabled,onClick:()=>send({type:'BACK'})},t('backLobby'))),
+   room.phase==='ready'&&h('section',{className:'panel room-ready'},h('h2',null,t('readyTitle')),h('p',null,t('readyHint')),admin&&h(Button,{kind:'gold',disabled:!enabled||!room.readiness?.ready,onClick:()=>send({type:'LAUNCH'})},t('start')),admin&&h(Button,{disabled:!enabled,onClick:()=>send({type:'BACK'})},t('backLobby'))),
    h('div',{className:'room-layout'},h('section',{className:'panel'},h('div',{className:'section-heading'},h('h2',null,t('roster')),h('span',{className:'pill',dir:'ltr'},room.players.length+' / 10')),h('p',{className:'fine'},t('choose')),room.players.map(memberRow),
     h('form',{className:'rename-row',onSubmit:async e=>{e.preventDefault();if(await send({type:'RENAME',name:rename}))remember('passnames-name',rename.trim());}},h('label',{htmlFor:'room-rename'},t('rename')),h('div',null,h('input',{id:'room-rename',maxLength:24,dir:'auto',value:rename,disabled:!enabled,onChange:e=>setRename(e.target.value)}),h(Button,{type:'submit',disabled:!enabled},t('renameSave'))))),settingsPanel()),
    admin&&h('section',{className:'panel approvals'},h('div',{className:'section-heading'},h('h2',null,t('pending')),h('span',{className:'pill'},room.pending.length)),h('p',{className:'fine'},t('lockHint')),h(Button,{disabled:!enabled,onClick:()=>send({type:'LOCK',locked:!room.locked})},t(room.locked?'unlock':'lock')),
@@ -104,9 +114,15 @@ export default function RoomHub({onLocal}){
   h('div',{className:'entry-join'},h('label',{htmlFor:'entry-code'},t('code')),h('input',{id:'entry-code',value:code,dir:'ltr',autoComplete:'off',onChange:e=>setCode(e.target.value),onKeyDown:e=>{if(e.key==='Enter'&&!busy)enter(false);}}),h(Button,{disabled:busy,onClick:()=>enter(false)},t('join'))),
   last&&readSeat(last)&&h(Button,{disabled:busy,kind:'quiet',onClick:()=>{const old=readSeat(last);if(old){setCode(last);setSeat({code:last,token:old.token});setError('');}}},t('resume')),h('p',{className:'fine'},t('privateNote')));}
  return h('div',{className:'app room-app',dir:lang==='ar'?'rtl':'ltr',lang},
-  h('header',{className:'topbar'},h('a',{className:'brand',href:'#',onClick:e=>e.preventDefault()},h('span',{className:'brand-icon'},'◈'),'passnames'),h('div',{className:'top-actions'},seat&&h('span',{className:'connection-status '+status,role:'status'},t(status)),languageSelect(),!seat&&h(Button,{kind:'quiet',onClick:onLocal},t('localTest')))),
-  h('main',{className:'room-main'},h('div',{className:'intro'},h('span',{className:'eyebrow'},t('stage')),!room&&h('h1',null,t('headline')),!room&&h('p',null,t('subheading'))),
-   h('p',{className:'stage-note'},t('stageNote')),error&&h('p',{className:'error',role:'alert'},roomError(lang,error)),storageWarning&&h('p',{className:'warning'},t('storageWarning')),notice&&h('p',{role:'status',className:'notice-text'},t(notice)),
+  !room?.match&&h('header',{className:'topbar'},h('a',{className:'brand',href:'#',onClick:e=>e.preventDefault()},h('span',{className:'brand-icon'},'◈'),'passnames'),h('div',{className:'top-actions'},seat&&h('span',{className:'connection-status '+status,role:'status'},t(status)),languageSelect(),!seat&&h(Button,{kind:'quiet',onClick:onLocal},t('localTest')))),
+  !room?.match&&h('main',{className:'room-main'},h('div',{className:'intro'},h('span',{className:'eyebrow'},t('stage')),!room&&h('h1',null,t('headline')),!room&&h('p',null,t('subheading'))),
+   h('p',{className:'stage-note'},t('stageNote')),error&&h('p',{className:'error',role:'alert'},( /[\p{Script=Arabic}]/u.test(error)?message(lang,error):roomError(lang,error))),storageWarning&&h('p',{className:'warning'},t('storageWarning')),notice&&h('p',{role:'status',className:'notice-text'},t(notice)),
    room?onlineLobby():seat?h('section',{className:'panel waiting-panel'},h('h2',null,t(status)),h('p',{className:'fine'},seat.code),h(Button,{onClick:()=>{connection.current?.stop();setSeat(null);setRoom(null);setStatus('closed');}},t('cancelConnection'))):entryPanel()),
+  room?.match&&h(React.Fragment,null,
+   error&&h('p',{className:'error',role:'alert'},/[\p{Script=Arabic}]/u.test(error)?message(lang,error):roomError(lang,error)),
+   h(App,{key:room.match.id,remote:{view:room.match,lang,onLang:setLang,connected:enabled,clockOffset:room.clockOffset||0,status,statusLabel:t(status),
+    onAction:action=>send({type:'GAME',matchId:room.match.id,version:room.match.version,turnNumber:room.match.turnNumber,action}),
+    onRematch:()=>send({type:'REMATCH',matchId:room.match.id}),onRoom:()=>setRoomControls(true)}}),
+   roomControls&&h('div',{className:'drawer-overlay',onClick:()=>setRoomControls(false)},h('aside',{className:'team-drawer room-drawer',role:'dialog','aria-modal':true,onClick:e=>e.stopPropagation()},h('div',{className:'section-heading'},h('h2',null,t('settings')),h(Button,{autoFocus:true,onClick:()=>setRoomControls(false)},t('close'))),onlineLobby()))),
   confirmation&&h('div',{className:'overlay'},h('section',{className:'modal confirm-modal',role:'dialog','aria-modal':true},h('p',null,confirmation.text),h('div',{className:'button-row'},h(Button,{kind:'gold',disabled:busy,onClick:async()=>{await confirmation.action();setConfirmation(null);}},t('confirm')),h(Button,{autoFocus:true,onClick:()=>setConfirmation(null)},t('cancel'))))));
 }

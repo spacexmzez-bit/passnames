@@ -1,4 +1,4 @@
-// Authoritative lobby rules. Session hashes stay on the server; no board exists in 3A.
+// Authoritative membership rules. Session hashes stay on the server.
 export const ROOM_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const EMPTY_ROOM_TTL=60*60*1000;
 export class RoomError extends Error { constructor(code,status=400){super(code);this.code=code;this.status=status;} }
@@ -52,7 +52,7 @@ export function lobbyAction(state,actorId,action,onlineIds=[],now=Date.now()){
  if(action.type==='LEAVE'){
   if(actor.status==='admitted'&&s.phase==='ready')s.phase='lobby';
   s.players=s.players.filter(p=>p.id!==actorId);
-  if(admin){const candidates=s.players.filter(p=>p.status==='admitted');s.adminId=(candidates.find(p=>onlineIds.includes(p.id))||candidates[0])?.id||null;s.phase='lobby';}
+  if(admin){const candidates=s.players.filter(p=>p.status==='admitted');s.adminId=(candidates.find(p=>onlineIds.includes(p.id))||candidates[0])?.id||null;if(!s.match)s.phase='lobby';}
   // Closing the last admitted seat removes pending members too; nobody can claim admin later.
   if(!s.adminId)s.players=[];
  }else{
@@ -84,7 +84,7 @@ export function lobbyAction(state,actorId,action,onlineIds=[],now=Date.now()){
    const check=readiness(s,onlineIds);requireThat(check.ready,check.problems[0]?.code||'INCOMPLETE_TEAMS',409);
    s.phase='ready';
   }else if(action.type==='BACK'){
-   s.phase='lobby';
+   requireThat(s.phase==='ready'&&!s.match,'LOBBY_ONLY',409);s.phase='lobby';
   }else if(action.type!=='LOCK')throw new RoomError('BAD_ACTION');
  }
  s.updatedAt=now;s.revision++;return s;

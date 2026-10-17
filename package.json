@@ -1,6 +1,6 @@
 {
   "name": "passnames",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "dev:worker": "npm run build && wrangler dev",
     "deploy": "wrangler deploy",
     "check:deploy": "npm run build && wrangler deploy --dry-run",
-    "test": "node --test engine.test.js ui.test.js room.test.js room-ui.test.js"
+    "test": "node --test engine.test.js ui.test.js room.test.js room-ui.test.js match.test.js"
   },
   "dependencies": {
     "react": "^19.1.0",
