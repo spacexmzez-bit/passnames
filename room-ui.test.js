@@ -65,3 +65,6 @@ test('settings collapse separately from readiness and the start control',()=>{
 test('unassigned admitted members remain visible while teammates occupy the correct role seats',()=>{
  let {s,guest}=model();s=lobbyAction(s,s.adminId,{type:'APPROVE',targetId:guest});const h=harness();let tree=mount(h,lobbyView(s,s.adminId,[s.adminId,guest]),'en');assert(text(find(tree,n=>n.props.className==='panel unassigned-seats')).includes('Guest'));s=lobbyAction(s,s.adminId,{type:'ASSIGN',targetId:guest,team:'red',role:'agent'});tree=mount(h,lobbyView(s,s.adminId,[s.adminId,guest]),'en');assert(!all(tree,n=>n.props.className==='panel unassigned-seats').length);assert(text(find(tree,n=>n.props.className==='seating-team red')).includes('Guest'));assert(!text(find(tree,n=>n.props.className==='seating-team blue')).includes('Guest'));
 });
+test('an in-flight command is busy without misreporting the room as disconnected',()=>{
+ const {s}=model(),h=harness(),room=lobbyView(s,s.adminId,[s.adminId]);room.phase='playing';room.match={id:'m',version:1,turnNumber:1};mount(h,room,'en');h.slots[7]=true;const remote=find(h.render(),n=>n.type==='online-game').props.remote;assert.equal(remote.connected,true);assert.equal(remote.busy,true);
+});

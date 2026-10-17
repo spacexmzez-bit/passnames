@@ -174,7 +174,7 @@ export default function RoomHub({onLocal}){
   room?.match&&h(React.Fragment,null,
    error&&h('p',{className:'error',role:'alert'},/[\p{Script=Arabic}]/u.test(error)?message(lang,error):roomError(lang,error)),
    room.recovery?.adminDeadline&&hostRecovery(),transferNotice(),
-   h(App,{key:room.match.id,remote:{view:room.match,presence:Object.fromEntries(room.players.map(p=>[p.id,p.online])),lang,onLang:setLang,connected:enabled,clockOffset:room.clockOffset||0,status,statusLabel:t(status),
+   h(App,{key:room.match.id,remote:{view:room.match,presence:Object.fromEntries(room.players.map(p=>[p.id,p.online])),lang,onLang:setLang,connected:status==='connected',busy,clockOffset:room.clockOffset||0,status,statusLabel:t(status),
     onAction:action=>send({type:'GAME',matchId:room.match.id,version:room.match.version,turnNumber:room.match.turnNumber,action}),
     onRematch:()=>send({type:'REMATCH',matchId:room.match.id}),onRoom:()=>setRoomControls(true)}}),
    roomControls&&h('div',{className:'drawer-overlay',onClick:()=>setRoomControls(false)},h('aside',{className:'team-drawer room-drawer',role:'dialog','aria-modal':true,onClick:e=>e.stopPropagation()},h('div',{className:'section-heading'},h('h2',null,t('settings')),h(Button,{autoFocus:true,onClick:()=>setRoomControls(false)},t('close'))),onlineLobby()))),

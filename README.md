@@ -1,18 +1,31 @@
-# passnames — UI Pass 1 (v0.4.0)
+# passnames — UI Pass 2 (v0.4.1)
 
 Shared multiplayer gameplay on the existing `passnames` Cloudflare Worker. Both modes retain the working 3B gameplay, with automatic disconnect pauses, timed admin transfer and controlled spy replacement. All authored files are directly in the repository root.
 
-## Visual foundation in this update
+## Playing experience in Pass 2
 
-Pass 1 introduces an ivory-and-navy tabletop theme, tactile word cards, blue/red team dossiers, a player-pass entry form, and a responsive lobby. The hero's sample words are taken from the same `words.json` pool. Fonts use the device's installed Arabic/English fonts; there are no external font or image requests, new packages, or paid services.
+This is the complete project, including Pass 1's entry/lobby/tabletop styling and all working 3C recovery. No new setup, assets, packages or backend migration is required. Every authored file remains at the repository root.
 
-The lobby groups players by team and role. Empty required seats are explicit; Take this seat sends the existing authenticated role-assignment command. Admin/self dropdowns remain available in the editable lobby. Other players are shown as readable seat cards. Unassigned players remain visible in their own section. Room settings use a native collapsible panel; readiness problems and Confirm lineup stay outside it, so collapsing settings never hides the start controls. Expanded/Standard, timer validation, manual draw, approvals, kicks, reconnection and recovery remain unchanged.
+- The current clue appears in a paper briefing panel above the board, with its count and the n+1 guess budget. Used guesses have visible counters; zero permits one guess; Unlimited shows no numerical cap. Posted zero/Unlimited clues carry the streak warning, as does the spy's selector. Clue preparation stays untimed. Guess/Second Chance countdowns still display the server's deadline and never send client ticks.
+- The player role and guidance distinguish clue preparation, agents' choices, the opponent's turn, recovery, spectators and connection loss. Only the local playtest has a perspective selector.
+- Suspects use small teammate-initial markers, with the full names retained in accessible labels/tooltips. The same top-right click icon reveals immediately, with no new confirmation. Spy highlights remain private frame-only assistance.
+- Expanded hands now contain illustrated SVG/CSS action cards, short effect descriptions, and specific availability reasons. Initial/future-turn locks, opponent turns, used actions, Scan-before-first-guess, Swap-before-clue and Second Chance's decision phase remain enforced. Only the owning agents receive the hand/private outcomes. The spy's manual draw station shows a generic card back and faded/available Draw button; it never displays the card identity.
+- Scan and Swap selections show the chosen word labels and numbered board positions. Tap a selected word/chip to remove it; Cancel changes no game state. Confirm spends the action only when the server accepts it. Valid selections survive a busy acknowledgement, a rejected request, or temporary reconnect; if the turn/card eligibility changes, the stale tool is cleared. No background action replay is added.
+- The two-step streak display explains progress toward a draw. The team sidebar has separate Teams, Clues and Events tabs, including recorded clue counts and turn/team labels. All history comes from the existing role-specific projection.
 
-On mobile, the player-pass form appears before the decorative deck. The board retains its actual 5×5 or 6×6 arrangement and full-width main view, with tools below and progress/history/room controls in sidebars. Suspecting, immediate reveal icons, private spy frame highlights, scan indicators and concealed pregame keys retain their existing behavior. The card foundation adds paper borders, layered shadows, clearer color identities and button press feedback, with reduced-motion handling.
+Sound, new draw/reveal/turn animations and the remaining celebration/accessibility polish belong to Pass 3. Existing victory effects are retained.
 
-Pass 2's interaction redesign and Pass 3's new sound/animation work are not included here. The existing win effects remain available with the new styling.
+## Review and test Pass 2
 
-A separate `passnames-pass1-preview.html` accompanies the source ZIP. Open it in a browser to switch between Entry, Lobby, Agent board and Spy board in Arabic/English. It uses sample snapshots rendered from these actual components and the same CSS. Only preview navigation and native collapsible panels work there; gameplay, entry and connection controls are inactive. It makes no server requests and is not needed in GitHub.
+A separate `passnames-pass2-preview.html` shows Entry, Lobby, Agent board, Spy board, Action hand, Swap selection and Clue log in Arabic/English. Use its preview toolbar to navigate. It renders sample states with the actual components and CSS; game/network controls are inactive. The preview is not needed in GitHub.
+
+After uploading the source and waiting for Cloudflare deployment:
+
+1. Send clues with 1, an Expanded 0, and Unlimited. Check the displayed guess budget and streak warning. Check that Standard still omits 0/action cards.
+2. Suspect a word as an agent. Only teammates should see the marker; the reveal icon still acts immediately. Spy frames must remain private.
+3. During a later own turn in Expanded, select Scan or Swap if the team holds it. Choose words and Cancel: no card or guess should be spent. Confirm a legal selection: everyone sees the resulting permitted state; scan outcomes stay private to owning agents. Card buttons explain unavailable phases.
+4. Open Teams, then switch to Clues and Events. Check the Arabic clue text and Latin counts under either UI language.
+5. Try a short timed match, refresh/reconnect, and use admin Pause/Resume/Rematch. Busy commands should not flash a false disconnected state. Rejected tool requests should leave valid selections available to review/retry.
 
 ## Update your existing deployment
 
@@ -100,6 +113,6 @@ Node 22.12+: `npm install`, `npm test`, then `npm run dev:worker`. Use the Worke
 
 ## Verification performed
 
-**146 automated tests pass**, including game rules, 50 seeded local-match simulations, lobby permissions, real-rule server protocol simulations with multiple socket identities, role privacy, competing guesses, server deadlines, Second Chance, action draws, rematches, storage recreation, transport errors and local/online component interaction checks. Additional UI checks cover dictionary-based entry samples, seat assignment, unassigned players and settings/readiness separation. Recovery scenarios cover critical-role disconnects, extra agents, duplicate tabs, heartbeat expiry, legacy connection upgrades, 60-second failover/cancellation, absent candidates, safe promotion and spectator permissions, persisted recovery, timer preservation and failed storage writes.
+**158 automated tests pass**, including game rules, 50 seeded local-match simulations, lobby permissions, real-rule server protocol simulations with multiple socket identities, role privacy, competing guesses, server deadlines, Second Chance, action draws, rematches, storage recreation, transport errors and local/online component interaction checks. UI checks cover dictionary-based entry samples, seating/settings/readiness, clue budgets, private equipment, Scan/Swap selection and cancellation, failed/rejected acknowledgements, busy-versus-disconnected state, stale tools, accessible markers, and sidebar navigation. Recovery scenarios cover critical-role disconnects, extra agents, duplicate tabs, heartbeat expiry, legacy connection upgrades, 60-second failover/cancellation, absent candidates, safe promotion and spectator permissions, persisted recovery, timer preservation and failed storage writes.
 
 The socket/storage simulations run in-process, and component checks use a lightweight harness. They do not verify browser layout. A full dependency build and browser visual QA were unavailable in the preparation environment; npm downloads were blocked with HTTP 403 during earlier setup. JavaScript syntax, relative imports, unchanged backend/configuration/word files and archive structure are checked separately. Your existing Cloudflare workflow runs the tests before its Vite build. After deployment, check the entry/lobby and both board sizes on your phone, switch UI language, and run a short multiplayer match.
